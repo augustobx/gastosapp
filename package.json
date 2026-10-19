@@ -1,0 +1,19 @@
+{
+  "name": "gastosapp",
+  "version": "1.0.0",
+  "description": "PWA de control de gastos, sueldo e ingresos - NanoLabs",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "keywords": ["pwa", "gastos", "finanzas", "nanolabs"],
+  "author": "NanoLabs",
+  "license": "MIT",
+  "dependencies": {
+    "compression": "^1.7.5",
+    "cors": "^2.8.5",
+    "express": "^4.21.2"
+  }
+}
