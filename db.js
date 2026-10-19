@@ -17,7 +17,8 @@ const defaults = () => ({
     {id:'master', name:'Mastercard', kind:'credit', closingDay:25, dueDay:10}
   ],
   transactions:[],
-  purchases:[]
+  purchases:[],
+  recurrences:[]
 });
 let state;
 function get() {
@@ -27,7 +28,7 @@ function get() {
   if (parsed.version !== 2 || !Array.isArray(parsed.transactions) || !Array.isArray(parsed.purchases)) {
     throw new Error('Esquema incompatible. Revisar respaldo antes de continuar.');
   }
-  state = parsed;
+  state = {...parsed, recurrences:Array.isArray(parsed.recurrences)?parsed.recurrences:[]};
   return state;
 }
 function persist() {
@@ -67,7 +68,8 @@ export const store = {
     if (!/^\d{4}-\d{2}$/.test(month)) throw new Error('Mes inválido');
     return {version:s.version, settings:s.settings, accounts:s.accounts, ...project(s,month),
       purchases:s.purchases.map(p=>({id:p.id,title:p.title,amount:p.amount,date:p.date,
-        count:p.installments.length,accountId:p.accountId}))};
+        count:p.installments.length,accountId:p.accountId})),
+      recurrences:s.recurrences.map(r=>({id:r.id,title:r.title,amount:r.amount,startDate:r.startDate}))};
   },
   settings(data) {
     const s=get();
@@ -115,7 +117,7 @@ export const store = {
   },
   deleteAccount(id) {
     const s=get();
-    if(s.transactions.some(t=>t.accountId===id)||s.purchases.some(p=>p.accountId===id))
+    if(s.transactions.some(t=>t.accountId===id)||s.purchases.some(p=>p.accountId===id)||s.recurrences.some(r=>r.accountId===id))
       throw new Error('Este medio tiene movimientos asociados');
     const i=s.accounts.findIndex(a=>a.id===id);
     if(i===-1)throw new Error('Medio no encontrado');
@@ -135,6 +137,12 @@ export const store = {
     if(!Number.isInteger(count)||count<1||count>60)throw new Error('Cuotas inválidas');
     if(type==='income' && count!==1)throw new Error('Los ingresos no admiten cuotas');
     const a=s.accounts.find(a=>a.id===accountId);
+    if(data.isRecurring===true){
+      if(type!=='expense'||count!==1)throw new Error('Los gastos recurrentes deben ser gastos mensuales sin cuotas');
+      const recurring={id:uid(),title,amount,category,accountId,notes,startDate:date,paidMonths:{}};
+      if(data.isPaid===true) recurring.paidMonths[date.slice(0,7)]=true;
+      s.recurrences.unshift(recurring);persist();return {kind:'recurrence',data:recurring};
+    }
     if(type==='expense' && (count>1 || a?.kind==='credit')) {
       if(count>1 && a?.kind!=='credit')throw new Error('Seleccioná una tarjeta de crédito para las cuotas');
       const purchase={id:uid(),title,amount,date,category,notes,accountId,
@@ -154,13 +162,26 @@ export const store = {
     if(data.date!==undefined)t.date=dateField(data.date);
     if(data.category!==undefined)t.category=categoryField(data.category);
     if(data.notes!==undefined)t.notes=clampText(data.notes);
-    if(data.accountId!==undefined)t.accountId=validateAccount(s,data.accountId);
+    if(data.accountId!==undefined){
+      const target=validateAccount(s,data.accountId);
+      if(s.accounts.some(a=>a.id===target&&a.kind==='credit'))throw new Error('Para cambiar a crédito, eliminá y registrá una compra financiada');
+      t.accountId=target;
+    }
     if(data.isPaid!==undefined) {t.isPaid=Boolean(data.isPaid);t.paidAt=t.isPaid?new Date().toISOString():null;}
     persist();return t;
   },
   setPaid(id,isPaid) {
     const s=get();let item=s.transactions.find(t=>t.id===id);
     if(!item)item=s.purchases.flatMap(p=>p.installments).find(i=>i.id===id);
+    if(!item && id.includes(':')){
+      const [recurrenceId,month]=id.split(':');
+      const rec=s.recurrences.find(r=>r.id===recurrenceId);
+      if(rec&&/^\d{4}-\d{2}$/.test(month)){
+        if(typeof isPaid!=='boolean')throw new Error('Estado inválido');
+        rec.paidMonths??={};rec.paidMonths[month]=isPaid;
+        persist();return {id,isPaid};
+      }
+    }
     if(!item)throw new Error('Movimiento no encontrado');
     if(typeof isPaid!=='boolean')throw new Error('Estado inválido');
     item.isPaid=isPaid;item.paidAt=isPaid?new Date().toISOString():null;
@@ -172,6 +193,8 @@ export const store = {
     if(i>=0){s.transactions.splice(i,1);persist();return true;}
     i=s.purchases.findIndex(x=>x.id===id);
     if(i>=0){s.purchases.splice(i,1);persist();return true;}
+    i=s.recurrences.findIndex(x=>x.id===id);
+    if(i>=0){s.recurrences.splice(i,1);persist();return true;}
     throw new Error('Movimiento no encontrado');
   },
   export() { return get(); }

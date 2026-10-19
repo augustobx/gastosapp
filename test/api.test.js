@@ -1,0 +1,62 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import net from 'node:net';
+
+const freePort=()=>new Promise((resolve,reject)=>{
+ const server=net.createServer();
+ server.once('error',reject);
+ server.listen(0,'127.0.0.1',()=>{const port=server.address().port;server.close(()=>resolve(port));});
+});
+const wait=ms=>new Promise(r=>setTimeout(r,ms));
+test('HTTP: protección, medios, cuotas, recurrentes y confirmación de pago',async t=>{
+ const port=await freePort();
+ const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'gastosapp-test-'));
+ const app=spawn(process.execPath,['server.js'],{cwd:process.cwd(),
+   env:{...process.env,PORT:String(port),NODE_ENV:'production',APP_PASSWORD:'test-secret-long-password',
+     DATA_DIR:tmp,OPENAI_API_KEY:''},stdio:['ignore','pipe','pipe']});
+ let err='';app.stderr.on('data',b=>{err+=String(b)});
+ t.after(()=>{app.kill();fs.rmSync(tmp,{force:true,recursive:true});});
+ const base='http://127.0.0.1:'+port;
+ let up=false;
+ for(let i=0;i<70;i++){
+   if(app.exitCode!==null)break;
+   try{const r=await fetch(base+'/api/health');if(r.ok){up=true;break;}}catch{}
+   await wait(100);
+ }
+ assert.equal(up,true,'Servidor no inició: '+err);
+ const get=async(url,method='GET',body,cookie='')=>{
+   const r=await fetch(base+url,{method,headers:{...(body?{'Content-Type':'application/json'}:{}),
+     ...(cookie?{Cookie:cookie}:{})},body:body?JSON.stringify(body):undefined});
+   return {code:r.status,cookie:r.headers.get('set-cookie'),json:await r.json()};
+ };
+ assert.equal((await get('/api/state')).code,401);
+ assert.equal((await get('/api/login','POST',{password:'mala'})).code,401);
+ const login=await get('/api/login','POST',{password:'test-secret-long-password'});
+ assert.equal(login.code,200);
+ const cookie=login.cookie.split(';')[0];
+ const initial=(await get('/api/state?month=2026-11','GET',null,cookie)).json.data;
+ assert.equal(initial.accounts.some(a=>a.id==='visa'),true);
+ let added=await get('/api/transactions','POST',{
+   type:'expense',title:'Celular',amount:120000,date:'2026-10-19',
+   category:'Tecnología',accountId:'visa',installmentCount:6
+ },cookie);
+ assert.equal(added.code,200);assert.equal(added.json.data.kind,'purchase');
+ let nov=(await get('/api/state?month=2026-11','GET',null,cookie)).json.data;
+ assert.equal(nov.expenses,20000);assert.equal(nov.pending,20000);
+ const id=nov.rows[0].installmentId;
+ assert.equal((await get('/api/paid/'+id,'PATCH',{isPaid:true},cookie)).code,200);
+ nov=(await get('/api/state?month=2026-11','GET',null,cookie)).json.data;
+ assert.equal(nov.pending,0);assert.equal(nov.paid,20000);assert.equal(nov.expenses,20000);
+ const recur=await get('/api/transactions','POST',{type:'expense',title:'Internet',amount:15000,
+  category:'Servicios',date:'2026-10-19',accountId:'transfer',isRecurring:true},cookie);
+ assert.equal(recur.json.data.kind,'recurrence');
+ const dec=(await get('/api/state?month=2026-12','GET',null,cookie)).json.data;
+ assert.equal(dec.expenses,35000);assert.equal(dec.pending,35000);
+ const voice=await get('/api/interpret','POST',{text:'Me patiné 20 lucas con Visa en 2 cuotas'},cookie);
+ assert.equal(voice.json.data.amount,20000);
+ assert.equal(voice.json.data.installmentCount,2);
+});

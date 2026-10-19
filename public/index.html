@@ -99,6 +99,7 @@
     <div class="field-grid"><label>Categoría<select id="txCategory"></select></label><label>Medio de pago<select id="txAccount"></select></label></div>
     <div class="field-grid"><label id="installmentsField">Cuotas<select id="txInstallments"><option value="1">Pago único</option></select></label><label class="checkbox-field"><input id="txPaid" type="checkbox" checked><span id="txPaidLabel">Ya pagado</span></label></div>
     <label>Notas (opcional)<textarea id="txNotes" rows="2" maxlength="450" placeholder="Algo más sobre este movimiento..."></textarea></label>
+    <label class="checkbox-field" id="recurringField"><input id="txRecurring" type="checkbox"><span>Repetir todos los meses (gasto fijo)</span></label>
     <div class="form-hint" id="installmentHint">Las cuotas se asignan automáticamente a los próximos vencimientos de la tarjeta.</div>
     <div class="dialog-actions"><button type="button" class="btn btn-muted close-dialog">Cancelar</button><button class="btn btn-primary" type="submit">Guardar movimiento</button></div>
   </form></dialog>

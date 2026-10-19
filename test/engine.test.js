@@ -48,3 +48,21 @@ test('marcar cuota pagada no suma segundo gasto',()=>{
  const nov=project(s,'2026-11');assert.equal(nov.expenses,50000);
  assert.equal(nov.pending,0);assert.equal(nov.paid,50000);
 });
+test('entiende ingreso depositado sin otras palabras clave',()=>{
+ const r=interpret('Me depositaron 50 mil por transferencia',[{id:'transfer',name:'Transferencia',kind:'transfer'}],new Date(2026,9,19));
+ assert.equal(r.type,'income');assert.equal(r.amount,50000);assert.equal(r.accountId,'transfer');
+});
+test('interpreta gambas y cuotas nombradas con palabras',()=>{
+ const cafe=interpret('Me gasté 3 gambas en un café',[],new Date(2026,9,19));
+ assert.equal(cafe.amount,300);
+ const tele=interpret('Compré una tele en seis cuotas de 20 lucas',[],new Date(2026,9,19));
+ assert.equal(tele.installmentCount,6);assert.equal(tele.amount,20000);
+ assert.ok(tele.questions.length>0);
+});
+test('gastos recurrentes generan vencimientos separados',()=>{
+ const state={settings:{salary:100000},transactions:[],purchases:[],recurrences:[{id:'internet',title:'Internet',amount:30000,
+  category:'Servicios',startDate:'2026-10-19',paidMonths:{'2026-10':true}}]};
+ const oct=project(state,'2026-10'),nov=project(state,'2026-11');
+ assert.equal(oct.paid,30000);assert.equal(oct.pending,0);
+ assert.equal(nov.pending,30000);assert.equal(nov.rows[0].id,'internet:2026-11');
+});

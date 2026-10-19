@@ -68,9 +68,9 @@ function rowsMarkup(rows,full){
   if(!rows.length)return '<div class="empty">No hay movimientos en este mes. <br>Probá registrar uno hablando con el asistente ✦</div>';
   return rows.map(t=>{
     const income=t.type==='income',id=t.isInstallment?t.installmentId:t.id,tag=t.isInstallment?' · Cuota '+t.number+'/'+t.total:'';
-    const subtitle=dateLabel(t.date)+' · '+escape(t.category)+' · '+escape(account(t.accountId)?.name||'Sin medio')+tag;
+    const subtitle=dateLabel(t.date)+' · '+escape(t.category)+' · '+escape(account(t.accountId)?.name||'Sin medio')+tag+(t.isRecurring?' · Fijo mensual':'');
     const status=income?'Ingreso':t.isPaid?'Pagado':'Pendiente';
-    return '<div class="tx-row"><span class="tx-icon '+(income?'income':'')+'">'+iconFor(t.category)+'</span><div class="tx-info"><strong>'+escape(t.title)+'</strong><small>'+subtitle+'</small></div><div class="tx-amount"><strong class="'+(income?'incoming':'')+'">'+(income?'+':'−')+fmt(t.amount)+'</strong><small>'+status+'</small></div>'+(full?'<div class="tx-ops">'+(!income?'<button class="action-mini" data-paid="'+escape(id)+'" data-next-paid="'+(!t.isPaid)+'" title="'+(t.isPaid?'Marcar pendiente':'Marcar pagado')+'">'+(t.isPaid?'↶':'✓')+'</button>':'')+(!t.isInstallment?'<button class="action-mini" data-edit="'+escape(t.id)+'" title="Editar">✎</button>':'')+'<button class="action-mini" data-delete="'+escape(t.isInstallment?t.purchaseId:t.id)+'" title="'+(t.isInstallment?'Eliminar compra completa':'Eliminar')+'">✕</button></div>':'')+'</div>';
+    return '<div class="tx-row"><span class="tx-icon '+(income?'income':'')+'">'+iconFor(t.category)+'</span><div class="tx-info"><strong>'+escape(t.title)+'</strong><small>'+subtitle+'</small></div><div class="tx-amount"><strong class="'+(income?'incoming':'')+'">'+(income?'+':'−')+fmt(t.amount)+'</strong><small>'+status+'</small></div>'+(full?'<div class="tx-ops">'+(!income?'<button class="action-mini" data-paid="'+escape(id)+'" data-next-paid="'+(!t.isPaid)+'" title="'+(t.isPaid?'Marcar pendiente':'Marcar pagado')+'">'+(t.isPaid?'↶':'✓')+'</button>':'')+(!t.isInstallment&&!t.isRecurring?'<button class="action-mini" data-edit="'+escape(t.id)+'" title="Editar">✎</button>':'')+'<button class="action-mini" data-delete="'+escape(t.isInstallment?t.purchaseId:t.isRecurring?t.recurrenceId:t.id)+'" title="'+(t.isInstallment?'Eliminar compra completa':'Eliminar')+'">✕</button></div>':'')+'</div>';
   }).join('');
 }
 function upcomingMarkup(rows) {
@@ -92,9 +92,10 @@ function setTransactionMode(){
   const type=$('movementForm').elements.movementType.value;
   const isIncome=type==='income';
   $('installmentsField').classList.toggle('hidden',isIncome);
+  $('recurringField').classList.toggle('hidden',isIncome);
   $('txPaidLabel').textContent=isIncome?'Ya recibido':'Ya pagado';
   $('installmentHint').classList.toggle('hidden',isIncome);
-  if(isIncome)$('txInstallments').value='1';
+  if(isIncome){$('txInstallments').value='1';$('txRecurring').checked=false;}
   const a=account($('txAccount').value);
   if(!isIncome&&a?.kind==='credit'){
     $('txPaid').checked=false;$('txPaid').disabled=true;
@@ -116,6 +117,7 @@ function openMovement(item){
   populateAccounts(item?.accountId||'');
   $('txAccount').value=item?.accountId||'';
   $('txInstallments').value='1';
+  $('txRecurring').checked=false;
   $('txPaid').checked=item?item.isPaid:true;
   $('txNotes').value=item?.notes||'';
   $$('.segmented input').forEach(x=>x.disabled=!!item);
@@ -128,6 +130,7 @@ async function saveMovement(e){
   const payload={type:$('movementForm').elements.movementType.value,amount:Number($('txAmount').value),
     title:$('txTitle').value,date:$('txDate').value,category:$('txCategory').value,
     accountId:$('txAccount').value||null,installmentCount:Number($('txInstallments').value),
+    isRecurring:$('txRecurring').checked,
     isPaid:$('txPaid').checked,notes:$('txNotes').value};
   try {
     if(state.editId)await request('/api/transactions/'+state.editId,'PATCH',payload);
@@ -160,11 +163,11 @@ function preview(){
   const method=account(d.accountId)?.name||d.mentionedMethod||'Sin especificar';
   const questions=d.questions||[];
   const blocked=d.amount===null||!Number.isFinite(Number(d.amount))||Number(d.amount)<=0||
-    (d.installmentCount>1 && account(d.accountId)?.kind!=='credit')||questions.length>0;
+    (d.installmentCount>1 && account(d.accountId)?.kind!=='credit')||(d.installmentCount>1&&d.isRecurring)||questions.length>0;
   const entries=[
     ['Tipo',d.type==='income'?'Ingreso':'Gasto'],['Importe',d.amount?fmt(d.amount):'Sin identificar'],
     ['Concepto',d.title],['Fecha',dateLabel(d.date)],['Categoría',d.category],
-    ['Medio',method],['Pago',d.installmentCount>1?d.installmentCount+' cuotas':(d.type==='income'?'Ingreso único':'Pago único')]
+    ['Medio',method],['Pago',d.isRecurring?'Gasto fijo mensual':d.installmentCount>1?d.installmentCount+' cuotas':(d.type==='income'?'Ingreso único':'Pago único')]
   ];
   $('assistantPreview').innerHTML='<h3>✦ Esto entendí</h3><div class="preview-grid">'+entries.map(x=>'<div class="preview-item"><small>'+escape(x[0])+'</small><strong>'+escape(x[1])+'</strong></div>').join('')+'</div>'+
     (questions.length?'<div class="preview-note">'+questions.map(q=>'⚠ '+escape(q)).join('<br>')+'</div>':'')+
@@ -179,6 +182,7 @@ function preview(){
     $('txCategory').value=categories.includes(draft.category)?draft.category:'Otros';
     $('txAccount').value=draft.accountId||'';
     $('txInstallments').value=String(draft.installmentCount||1);
+    $('txRecurring').checked=Boolean(draft.isRecurring);
     $('txPaid').checked=draft.isPaid;$('txNotes').value=draft.notes||'';
     setTransactionMode();
   });
@@ -208,7 +212,7 @@ async function toggleVoice(){
   if(NativeSpeech){
     const rec=new NativeSpeech();state.recognizer=rec;rec.lang='es-AR';rec.interimResults=true;rec.continuous=false;
     $('recordBtn').classList.add('recording');$('recordStatus').textContent='Escuchando... hablá ahora';
-    rec.onresult=e=>{$('assistantText').value=[...e.results].map(x=>x[0].transcript).join(' ');};
+    rec.onresult=e=>{$('assistantText').value=Array.from(e.results).map(x=>x[0].transcript).join(' ');};
     rec.onerror=e=>toast('Dictado no disponible: '+e.error);
     rec.onend=()=>{state.recognizer=null;$('recordBtn').classList.remove('recording');$('recordStatus').textContent='Texto listo para interpretar';};
     try{rec.start();}catch(err){rec.onend();toast(err.message);}
@@ -278,7 +282,7 @@ async function init(){
   $('themeToggle').textContent=document.documentElement.dataset.theme==='light'?'☀':'☾';
   $('monthFilter').value=state.month;
   $('txCategory').innerHTML=categories.map(c=>'<option value="'+c+'">'+c+'</option>').join('');
-  $('txInstallments').innerHTML=Array.from({length:36},(_,i)=>'<option value="'+(i+1)+'">'+(i===0?'Pago único':(i+1)+' cuotas')+'</option>').join('');
+  $('txInstallments').innerHTML=Array.from({length:60},(_,i)=>'<option value="'+(i+1)+'">'+(i===0?'Pago único':(i+1)+' cuotas')+'</option>').join('');
   events();
   if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
   try{

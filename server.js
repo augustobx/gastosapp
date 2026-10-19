@@ -19,6 +19,14 @@ app.use(compression());
 app.use(express.json({limit:'128kb'}));
 const sessions=new Map();
 const attempts=new Map();
+const highCostAttempts=new Map();
+function limited(maxPerMinute){return (req,res,next)=>{
+  const key=rateKey(req)+':'+req.path,now=Date.now();
+  let a=highCostAttempts.get(key);
+  if(!a||a.until<now)a={count:0,until:now+60000};
+  if(a.count>=maxPerMinute)return res.status(429).json({error:'Demasiadas solicitudes. Probá en un minuto.'});
+  a.count++;highCostAttempts.set(key,a);next();
+};}
 const sha=x=>crypto.createHash('sha256').update(String(x)).digest();
 const same=(a,b)=>crypto.timingSafeEqual(sha(a),sha(b));
 const rateKey=req=>req.ip||'unknown';
@@ -57,7 +65,7 @@ app.post('/api/login',(req,res)=>{
   const ip=rateKey(req),now=Date.now(), record=attempts.get(ip)||{count:0,until:now+900000};
   if(record.until<now){record.count=0;record.until=now+900000;}
   if(record.count>=8)return res.status(429).json({error:'Demasiados intentos. Intentá más tarde.'});
-  if((password && !same(req.body.password||'',password)) || (!password && process.env.NODE_ENV==='production')){
+  if((password && !same(req.body?.password||'',password)) || (!password && process.env.NODE_ENV==='production')){
     record.count++;attempts.set(ip,record);return res.status(401).json({error:'Contraseña incorrecta'});
   }
   attempts.delete(ip);
@@ -89,7 +97,7 @@ async function aiInterpret(text, accounts, draft) {
   if(!process.env.OPENAI_API_KEY)return draft;
   const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),16000);
   try{
-    const prompt='Interpretá español rioplatense y lunfardo para registrar finanzas. Respondé SOLO JSON con campos type (income|expense),title,amount,date (YYYY-MM-DD),category,installmentCount,mentionedMethod,isPaid. "lucas"=1000 pesos, "palos"=1000000 pesos, "gambas"=100 pesos; "6 cuotas de 20 mil" es importe POR CUOTA, "120 mil en 6 cuotas" es monto TOTAL. No inventes datos. Fecha actual: '+isoDay(new Date())+'. Medios disponibles: '+accounts.map(a=>a.name).join(', ')+'.';
+    const prompt='Interpretá español rioplatense y lunfardo para registrar finanzas. Respondé SOLO JSON con campos type (income|expense),title,amount,date (YYYY-MM-DD),category,installmentCount,mentionedMethod,isPaid,isRecurring. "lucas"=1000 pesos, "palos"=1000000 pesos, "gambas"=100 pesos; "6 cuotas de 20 mil" es importe POR CUOTA, "120 mil en 6 cuotas" es monto TOTAL. No inventes datos. Fecha actual: '+isoDay(new Date())+'. Medios disponibles: '+accounts.map(a=>a.name).join(', ')+'.';
     const response=await fetch('https://api.openai.com/v1/chat/completions',{
       method:'POST',signal:controller.signal,
       headers:{Authorization:'Bearer '+process.env.OPENAI_API_KEY,'Content-Type':'application/json'},
@@ -108,7 +116,8 @@ async function aiInterpret(text, accounts, draft) {
     if(Number.isInteger(result.installmentCount)&&result.installmentCount>=1&&result.installmentCount<=60)
       updated.installmentCount=result.installmentCount;
     if(typeof result.isPaid==='boolean')updated.isPaid=result.isPaid;
-    if(typeof result.mentionedMethod==='string'){
+    if(typeof result.isRecurring==='boolean')updated.isRecurring=result.isRecurring;
+    if(typeof result.mentionedMethod==='string'&&result.mentionedMethod.trim()){
       const matched=accounts.find(a=>a.name.toLowerCase().includes(result.mentionedMethod.toLowerCase())||
         result.mentionedMethod.toLowerCase().includes(a.name.toLowerCase()));
       if(matched){updated.accountId=matched.id;updated.mentionedMethod=result.mentionedMethod;}
@@ -119,7 +128,7 @@ async function aiInterpret(text, accounts, draft) {
     return updated;
   }finally{clearTimeout(timeout);}
 }
-app.post('/api/interpret',wrap(async req=>{
+app.post('/api/interpret',limited(30),wrap(async req=>{
   const text=String(req.body.text||'');
   const {accounts}=store.snapshot();
   let draft=interpret(text,accounts);
@@ -129,7 +138,7 @@ app.post('/api/interpret',wrap(async req=>{
   }
   return draft;
 }));
-app.post('/api/voice/transcribe',express.raw({type:['audio/webm','audio/mp4','audio/mpeg','audio/ogg','audio/wav','application/octet-stream'],limit:'8mb'}),wrap(async req=>{
+app.post('/api/voice/transcribe',limited(10),express.raw({type:['audio/webm','audio/mp4','audio/mpeg','audio/ogg','audio/wav','application/octet-stream'],limit:'8mb'}),wrap(async req=>{
   if(!process.env.OPENAI_API_KEY)throw new Error('Configurá OPENAI_API_KEY para transcribir audio; también podés usar el dictado nativo del navegador.');
   if(!Buffer.isBuffer(req.body)||req.body.length<100)throw new Error('Audio vacío');
   const type=String(req.headers['content-type']||'audio/webm').split(';')[0];
