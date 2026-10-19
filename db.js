@@ -38,7 +38,12 @@ function loadDatabase() {
     const parsed = JSON.parse(raw);
     dbState = {
       settings: { ...DEFAULT_STATE.settings, ...(parsed.settings || {}) },
-      expenses: Array.isArray(parsed.expenses) ? parsed.expenses : [],
+      expenses: Array.isArray(parsed.expenses) ? parsed.expenses.map(e => ({
+        ...e,
+        isPaid: typeof e.isPaid !== 'undefined' ? Boolean(e.isPaid) : true,
+        paidAt: e.paidAt || (e.isPaid ? e.date : null),
+        dueDate: e.dueDate || e.date
+      })) : [],
       incomes: Array.isArray(parsed.incomes) ? parsed.incomes : []
     };
     return dbState;
@@ -91,7 +96,6 @@ function doesFixedExpenseApplyToMonth(expense, targetMonth) {
 
   if (fixedType === 'meses') {
     if (duration <= 0) return targetMonth === expMonth;
-    // Calculate months difference
     const [startYear, startM] = expMonth.split('-').map(Number);
     const [targetYear, targetM] = targetMonth.split('-').map(Number);
     const monthDiff = (targetYear - startYear) * 12 + (targetM - startM);
@@ -99,7 +103,6 @@ function doesFixedExpenseApplyToMonth(expense, targetMonth) {
   }
 
   if (fixedType === 'dias' || fixedType === 'semanas') {
-    // For days and weeks, calculate date range
     const startObj = new Date(`${expDate}T00:00:00`);
     let endObj = new Date(startObj);
     if (fixedType === 'dias') {
@@ -112,7 +115,6 @@ function doesFixedExpenseApplyToMonth(expense, targetMonth) {
     const monthStart = new Date(tY, tM - 1, 1);
     const monthEnd = new Date(tY, tM, 0, 23, 59, 59);
 
-    // Overlaps if start <= monthEnd and end >= monthStart
     return startObj <= monthEnd && endObj >= monthStart;
   }
 
@@ -142,7 +144,7 @@ export const db = {
     return { ...state.settings };
   },
 
-  getExpenses({ month, category, isFixed, search } = {}) {
+  getExpenses({ month, category, isFixed, isPaid, search } = {}) {
     const state = loadDatabase();
     let list = [...state.expenses];
 
@@ -159,6 +161,11 @@ export const db = {
       list = list.filter(exp => Boolean(exp.isFixed) === fixedBool);
     }
 
+    if (typeof isPaid !== 'undefined' && isPaid !== null) {
+      const paidBool = isPaid === true || isPaid === 'true' || isPaid === '1';
+      list = list.filter(exp => Boolean(exp.isPaid) === paidBool);
+    }
+
     if (search && search.trim()) {
       const q = search.trim().toLowerCase();
       list = list.filter(exp =>
@@ -168,8 +175,14 @@ export const db = {
       );
     }
 
-    // Sort by date descending
-    list.sort((a, b) => (b.date || '').localeCompare(a.date || '') || b.createdAt.localeCompare(a.createdAt));
+    // Sort: uncompleted/unpaid first, then by date descending
+    list.sort((a, b) => {
+      if (a.isPaid !== b.isPaid) {
+        return a.isPaid ? 1 : -1; // Unpaid first
+      }
+      return (b.date || '').localeCompare(a.date || '') || b.createdAt.localeCompare(a.createdAt);
+    });
+
     return list;
   },
 
@@ -186,15 +199,29 @@ export const db = {
     }
 
     const now = new Date().toISOString();
+    const today = now.split('T')[0];
+    const isFixed = Boolean(data.isFixed);
+    
+    // Default isPaid: if explicit boolean, use it. Otherwise, fixed expenses default to unpaid (pending to pay), variable defaults to paid
+    let isPaid = true;
+    if (typeof data.isPaid !== 'undefined') {
+      isPaid = Boolean(data.isPaid);
+    } else if (isFixed) {
+      isPaid = false;
+    }
+
     const expense = {
       id: generateId(),
-      date: data.date || now.split('T')[0],
+      date: data.date || today,
+      dueDate: data.dueDate || data.date || today,
       title: (data.title || 'Gasto sin título').trim(),
       amount: Math.round(amount * 100) / 100,
       category: data.category || 'Otros',
-      isFixed: Boolean(data.isFixed),
+      isFixed,
       fixedType: data.fixedType || 'meses',
       fixedDuration: data.fixedDuration !== undefined ? data.fixedDuration : '1',
+      isPaid,
+      paidAt: isPaid ? (data.paidAt || now) : null,
       notes: (data.notes || '').trim(),
       createdAt: now,
       updatedAt: now
@@ -216,15 +243,25 @@ export const db = {
       throw new Error('El monto debe ser un número positivo mayor a 0');
     }
 
+    let isPaid = current.isPaid;
+    let paidAt = current.paidAt;
+    if (typeof data.isPaid !== 'undefined') {
+      isPaid = Boolean(data.isPaid);
+      paidAt = isPaid ? (current.paidAt || new Date().toISOString()) : null;
+    }
+
     const updated = {
       ...current,
       date: data.date !== undefined ? data.date : current.date,
+      dueDate: data.dueDate !== undefined ? data.dueDate : (current.dueDate || current.date),
       title: data.title !== undefined ? data.title.trim() : current.title,
       amount: Math.round(amount * 100) / 100,
       category: data.category !== undefined ? data.category : current.category,
       isFixed: data.isFixed !== undefined ? Boolean(data.isFixed) : current.isFixed,
       fixedType: data.fixedType !== undefined ? data.fixedType : current.fixedType,
       fixedDuration: data.fixedDuration !== undefined ? data.fixedDuration : current.fixedDuration,
+      isPaid,
+      paidAt,
       notes: data.notes !== undefined ? data.notes.trim() : current.notes,
       updatedAt: new Date().toISOString()
     };
@@ -232,6 +269,24 @@ export const db = {
     state.expenses[index] = updated;
     saveDatabase(state);
     return updated;
+  },
+
+  toggleExpensePaid(id, forceStatus) {
+    const state = loadDatabase();
+    const index = state.expenses.findIndex(e => e.id === id);
+    if (index === -1) return null;
+
+    const current = state.expenses[index];
+    const newPaidStatus = typeof forceStatus !== 'undefined' ? Boolean(forceStatus) : !current.isPaid;
+    const now = new Date().toISOString();
+
+    current.isPaid = newPaidStatus;
+    current.paidAt = newPaidStatus ? now : null;
+    current.updatedAt = now;
+
+    state.expenses[index] = current;
+    saveDatabase(state);
+    return current;
   },
 
   deleteExpense(id) {
@@ -335,12 +390,12 @@ export const db = {
     const state = loadDatabase();
     const now = new Date();
     const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     const month = targetMonth || currentMonthStr;
 
     const [yearNum, monthNum] = month.split('-').map(Number);
     const daysInMonth = new Date(yearNum, monthNum, 0).getDate();
 
-    // Calculate days remaining
     let daysRemaining = 0;
     if (month === currentMonthStr) {
       daysRemaining = Math.max(1, daysInMonth - now.getDate() + 1);
@@ -362,7 +417,20 @@ export const db = {
 
     let fixedExpensesTotal = 0;
     let variableExpensesTotal = 0;
+    let totalPaid = 0;
+    let totalPending = 0;
+    let paidCount = 0;
+    let pendingCount = 0;
+
     const categoryTotals = {};
+    const pendingList = [];
+    const overdueList = [];
+    const dueSoonList = [];
+
+    // Calculate dates for dueSoon (within next 3 days)
+    const in3Days = new Date(now);
+    in3Days.setDate(in3Days.getDate() + 3);
+    const in3DaysStr = in3Days.toISOString().split('T')[0];
 
     for (const exp of monthExpenses) {
       const amt = exp.amount || 0;
@@ -372,14 +440,32 @@ export const db = {
         variableExpensesTotal += amt;
       }
 
+      if (exp.isPaid) {
+        totalPaid += amt;
+        paidCount++;
+      } else {
+        totalPending += amt;
+        pendingCount++;
+        pendingList.push(exp);
+
+        const dDate = exp.dueDate || exp.date || todayStr;
+        if (dDate < todayStr) {
+          overdueList.push(exp);
+        } else if (dDate <= in3DaysStr) {
+          dueSoonList.push(exp);
+        }
+      }
+
       const cat = exp.category || 'Otros';
       categoryTotals[cat] = (categoryTotals[cat] || 0) + amt;
     }
 
     const totalExpenses = fixedExpensesTotal + variableExpensesTotal;
-    const balance = totalIncome - totalExpenses;
+    const balance = totalIncome - totalExpenses; // Saldo neto final
+    const cashOnHand = totalIncome - totalPaid; // Dinero líquido disponible actualmente
 
     const spentPercentage = totalIncome > 0 ? Math.min(100, Math.round((totalExpenses / totalIncome) * 100)) : (totalExpenses > 0 ? 100 : 0);
+    const paidPercentage = totalExpenses > 0 ? Math.round((totalPaid / totalExpenses) * 100) : 100;
     const savingsRate = totalIncome > 0 ? Math.max(0, Math.round((balance / totalIncome) * 100)) : 0;
 
     const dailyBudget = daysRemaining > 0 && balance > 0 ? Math.round((balance / daysRemaining) * 100) / 100 : 0;
@@ -393,6 +479,64 @@ export const db = {
       }))
       .sort((a, b) => b.total - a.total);
 
+    // ==========================================
+    // ASISTENTE FINANCIERO INTELIGENTE (INSIGHTS)
+    // ==========================================
+    const notifications = [];
+    let assistantHeadline = '';
+    let assistantDetail = '';
+    let assistantTone = 'positive'; // positive, warning, danger, neutral
+
+    if (totalIncome === 0 && totalExpenses === 0) {
+      assistantTone = 'neutral';
+      assistantHeadline = 'Comenzá configurando tu sueldo e ingresos';
+      assistantDetail = 'Definí tu ingreso base mensual para que pueda calcularte cuánto tenés libre y proyectar tus compromisos.';
+    } else if (balance < 0) {
+      assistantTone = 'danger';
+      assistantHeadline = `Atención: Tenés un déficit proyectado de $${Math.abs(balance).toLocaleString('es-AR')}`;
+      assistantDetail = `Tus gastos totales ($${totalExpenses.toLocaleString('es-AR')}) superan tus ingresos ($${totalIncome.toLocaleString('es-AR')}). Revisá los gastos variables antes de asumir nuevos pagos.`;
+    } else if (cashOnHand < totalPending) {
+      assistantTone = 'warning';
+      assistantHeadline = `Cuidado: Te faltan $${(totalPending - cashOnHand).toLocaleString('es-AR')} para cubrir los compromisos pendientes`;
+      assistantDetail = `Tenés $${totalPending.toLocaleString('es-AR')} pendientes en ${pendingCount} pagos y tu saldo actual en mano es de $${cashOnHand.toLocaleString('es-AR')}. Necesitás ingresar fondos o postergar pagos.`;
+    } else if (totalPending === 0 && totalExpenses > 0) {
+      assistantTone = 'positive';
+      assistantHeadline = '¡100% al día! No tenés cuentas pendientes este mes';
+      assistantDetail = `Ya pagaste todos tus compromisos del mes ($${totalPaid.toLocaleString('es-AR')}). Tu saldo neto libre es de $${balance.toLocaleString('es-AR')} ($${dailyBudget.toLocaleString('es-AR')}/día).`;
+    } else {
+      assistantTone = 'positive';
+      assistantHeadline = `Tenés $${totalPending.toLocaleString('es-AR')} por pagar y te van a sobrar $${balance.toLocaleString('es-AR')} libres`;
+      assistantDetail = `De tus $${totalIncome.toLocaleString('es-AR')} de ingresos, ya pagaste $${totalPaid.toLocaleString('es-AR')}. Tenés ${pendingCount} ${pendingCount === 1 ? 'pago pendiente' : 'pagos pendientes'}. Al liquidarlos, te quedarán $${dailyBudget.toLocaleString('es-AR')} por día para el resto del mes.`;
+    }
+
+    // Generate notifications
+    if (overdueList.length > 0) {
+      notifications.push({
+        id: 'overdue',
+        type: 'danger',
+        title: `${overdueList.length} ${overdueList.length === 1 ? 'cuenta vencida' : 'cuentas vencidas'}`,
+        message: `Tenés pagos con fecha vencida: ${overdueList.map(o => `${o.title} ($${o.amount.toLocaleString('es-AR')})`).join(', ')}.`
+      });
+    }
+
+    if (dueSoonList.length > 0) {
+      notifications.push({
+        id: 'due_soon',
+        type: 'warning',
+        title: `${dueSoonList.length} ${dueSoonList.length === 1 ? 'pago próximo a vencer' : 'pagos próximos a vencer'}`,
+        message: `Por vencer en los próximos días: ${dueSoonList.map(d => `${d.title} ($${d.amount.toLocaleString('es-AR')})`).join(', ')}.`
+      });
+    }
+
+    if (totalPending > 0) {
+      notifications.push({
+        id: 'pending_summary',
+        type: 'info',
+        title: `${pendingCount} gastos pendientes de pago`,
+        message: `Total a pagar pendiente: $${totalPending.toLocaleString('es-AR')}. Ya cancelaste el ${paidPercentage}% del total.`
+      });
+    }
+
     return {
       month,
       currency: state.settings.currency || '$',
@@ -403,6 +547,12 @@ export const db = {
       fixedExpensesTotal: Math.round(fixedExpensesTotal * 100) / 100,
       variableExpensesTotal: Math.round(variableExpensesTotal * 100) / 100,
       totalExpenses: Math.round(totalExpenses * 100) / 100,
+      totalPaid: Math.round(totalPaid * 100) / 100,
+      totalPending: Math.round(totalPending * 100) / 100,
+      paidCount,
+      pendingCount,
+      paidPercentage,
+      cashOnHand: Math.round(cashOnHand * 100) / 100,
       balance: Math.round(balance * 100) / 100,
       spentPercentage,
       savingsRate,
@@ -411,7 +561,15 @@ export const db = {
       dailyBudget,
       categories: categoriesList,
       totalExpenseCount: monthExpenses.length,
-      totalIncomeCount: monthIncomes.length + (salary > 0 ? 1 : 0)
+      totalIncomeCount: monthIncomes.length + (salary > 0 ? 1 : 0),
+      assistant: {
+        tone: assistantTone,
+        headline: assistantHeadline,
+        detail: assistantDetail,
+        notifications,
+        overdueCount: overdueList.length,
+        dueSoonCount: dueSoonList.length
+      }
     };
   },
 

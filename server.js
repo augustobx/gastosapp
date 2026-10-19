@@ -74,8 +74,8 @@ app.get('/api/summary', (req, res) => {
 // --- Expenses ---
 app.get('/api/expenses', (req, res) => {
   try {
-    const { month, category, isFixed, search } = req.query;
-    const expenses = db.getExpenses({ month, category, isFixed, search });
+    const { month, category, isFixed, isPaid, search } = req.query;
+    const expenses = db.getExpenses({ month, category, isFixed, isPaid, search });
     res.json({ success: true, count: expenses.length, data: expenses });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -100,6 +100,19 @@ app.put('/api/expenses/:id', (req, res) => {
     res.json({ success: true, data: updated });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// 1-Click Toggle Paid status
+app.patch('/api/expenses/:id/toggle-pay', (req, res) => {
+  try {
+    const updated = db.toggleExpensePaid(req.params.id, req.body.isPaid);
+    if (!updated) {
+      return res.status(404).json({ success: false, error: 'Gasto no encontrado' });
+    }
+    res.json({ success: true, data: updated });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 

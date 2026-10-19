@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>GastosApp - Control de Gastos e Ingresos</title>
+  <title>GastosApp - Asistente Financiero Inteligente</title>
   
   <!-- PWA Meta Tags -->
-  <meta name="description" content="Control inteligente de gastos, sueldo, gastos fijos e ingresos con cálculo en tiempo real.">
-  <meta name="theme-color" content="#090d16">
+  <meta name="description" content="Asistente financiero inteligente: control de gastos pagados e impagos, sueldo, seguimiento de vencimientos y balance en tiempo real.">
+  <meta name="theme-color" content="#080c14">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="GastosApp">
@@ -15,7 +15,7 @@
   <link rel="icon" type="image/svg+xml" href="/icons/icon.svg">
   <link rel="apple-touch-icon" href="/icons/icon.svg">
 
-  <!-- Modern Google Font: Outfit & Inter -->
+  <!-- Modern Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -23,23 +23,53 @@
   <link rel="stylesheet" href="/app.css">
 </head>
 <body>
-  <div id="app" class="app-container">
+  <div id="app" class="app-layout">
     
     <!-- Top Navigation Header -->
     <header class="app-header">
-      <div class="header-brand">
+      <div class="header-left">
         <div class="brand-logo">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
           </svg>
         </div>
         <div class="brand-info">
           <span class="brand-title">GastosApp</span>
-          <span class="brand-badge">NanoLabs</span>
+          <span class="brand-subtitle">Asistente Financiero</span>
         </div>
       </div>
 
+      <!-- Month Selector in Header -->
+      <div class="month-selector-bar">
+        <button id="btnPrevMonth" class="month-arrow-btn" aria-label="Mes anterior">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <polyline points="15 18 9 12 15 6"></polyline>
+          </svg>
+        </button>
+
+        <div class="month-display" id="monthDisplayContainer">
+          <span class="month-name" id="currentMonthLabel">Octubre 2026</span>
+          <input type="month" id="monthPickerInput" class="hidden-month-input" aria-label="Seleccionar mes">
+        </div>
+
+        <button id="btnNextMonth" class="month-arrow-btn" aria-label="Mes siguiente">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <polyline points="9 18 15 12 9 6"></polyline>
+          </svg>
+        </button>
+      </div>
+
       <div class="header-actions">
+        <!-- Notification Bell Button -->
+        <button id="btnNotifications" class="btn-icon btn-notifications" title="Notificaciones de vencimientos">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+            <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+          </svg>
+          <span class="notification-badge" id="notificationBadge" style="display: none;">0</span>
+        </button>
+
+        <!-- Install PWA -->
         <button id="btnPwaInstall" class="btn-icon-label" title="Instalar aplicación" style="display: none;">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
@@ -47,230 +77,327 @@
           <span class="btn-text">Instalar</span>
         </button>
 
-        <button id="btnExport" class="btn-icon" title="Exportar / Respaldo">
+        <!-- Export -->
+        <button id="btnExport" class="btn-icon" title="Exportar respaldo">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
           </svg>
         </button>
+
+        <!-- Quick Add Desktop Button -->
+        <button class="btn-primary btn-sm desktop-only open-expense-modal">
+          + Nuevo Gasto
+        </button>
+        <button class="btn-secondary btn-sm desktop-only open-income-modal">
+          + Ingreso
+        </button>
       </div>
     </header>
 
-    <!-- Month Selector Bar -->
-    <section class="month-selector-bar">
-      <button id="btnPrevMonth" class="month-arrow-btn" aria-label="Mes anterior">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-          <polyline points="15 18 9 12 15 6"></polyline>
-        </svg>
-      </button>
+    <!-- Main Responsive Workspace -->
+    <main class="dashboard-main">
 
-      <div class="month-display" id="monthDisplayContainer">
-        <span class="month-name" id="currentMonthLabel">Cargando...</span>
-        <input type="month" id="monthPickerInput" class="hidden-month-input" aria-label="Seleccionar mes">
-      </div>
-
-      <button id="btnNextMonth" class="month-arrow-btn" aria-label="Mes siguiente">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-          <polyline points="9 18 15 12 9 6"></polyline>
-        </svg>
-      </button>
-    </section>
-
-    <!-- Main Content Hub -->
-    <main class="main-content">
-
-      <!-- Hero Financial Summary Card -->
-      <section class="summary-hero-card">
-        <div class="balance-meta">
-          <span class="balance-tagline">Saldo Disponible</span>
-          <span class="status-pill" id="balanceStatusPill">En balance</span>
+      <!-- ==============================================
+           ROW 1: ASISTENTE FINANCIERO INTELIGENTE (HERO)
+           ============================================== -->
+      <section class="assistant-hero-banner" id="assistantHeroBanner">
+        <div class="assistant-hero-left">
+          <div class="assistant-avatar" id="assistantAvatar">🧠</div>
+          <div class="assistant-text-wrap">
+            <div class="assistant-headline-row">
+              <span class="assistant-tag">Asistente Financiero Inteligente</span>
+              <span class="assistant-status-chip" id="assistantStatusChip">Analizando...</span>
+            </div>
+            <h2 class="assistant-headline" id="assistantHeadline">Cargando diagnóstico financiero...</h2>
+            <p class="assistant-detail" id="assistantDetail">Calculando compromisos, ingresos y estado de tus cuentas.</p>
+          </div>
         </div>
 
-        <div class="balance-amount-row">
-          <span class="currency-symbol" id="balanceCurrency">$</span>
-          <h1 class="balance-amount" id="balanceAmount">0</h1>
+        <div class="assistant-hero-actions">
+          <div class="assistant-stat-pill">
+            <span class="stat-pill-label">Compromisos al día</span>
+            <span class="stat-pill-val" id="assistantProgressPct">0%</span>
+          </div>
+          <button id="btnViewPendingAlerts" class="btn-assistant-alert" style="display: none;">
+            <span class="alert-pulse"></span>
+            <span id="btnAlertsText">0 alertas de pago</span>
+          </button>
         </div>
+      </section>
 
-        <!-- Budget Progress Bar -->
-        <div class="progress-container">
+      <!-- ==============================================
+           ROW 2: FINANCIAL KPI SUMMARY GRID (4 CARDS)
+           ============================================== -->
+      <section class="kpi-master-grid">
+        
+        <!-- CARD 1: SALDO DISPONIBLE FINAL -->
+        <div class="summary-card balance-card">
+          <div class="card-meta">
+            <span class="card-tag">Saldo Neto Proyectado</span>
+            <span class="status-pill" id="balanceStatusPill">En balance</span>
+          </div>
+          <div class="card-amount-row">
+            <span class="cur-sym" id="balanceCurrency">$</span>
+            <h3 class="card-amount" id="balanceAmount">0</h3>
+          </div>
           <div class="progress-bar-track">
             <div class="progress-bar-fill" id="budgetProgressBar" style="width: 0%;"></div>
           </div>
-          <div class="progress-labels">
+          <div class="card-sub-stats">
             <span id="spentPercentageLabel">0% gastado</span>
             <span id="dailyBudgetLabel">Restan 0 días</span>
           </div>
         </div>
 
-        <!-- Sub Breakdown Cards -->
-        <div class="kpi-grid">
-          <!-- Total Ingresos Card -->
-          <div class="kpi-card income-kpi" id="kpiIncomeCard">
-            <div class="kpi-top">
-              <span class="kpi-icon-wrap income-icon">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                  <line x1="12" y1="19" x2="12" y2="5"></line>
-                  <polyline points="5 12 12 5 19 12"></polyline>
-                </svg>
-              </span>
-              <span class="kpi-label">Ingresos Totales</span>
-            </div>
-            <div class="kpi-value" id="kpiTotalIncome">$0</div>
-            <div class="kpi-subtext">
-              <span>Sueldo: <strong id="kpiSalarySub">$0</strong></span>
-              <button id="btnQuickEditSalary" class="link-btn" title="Editar sueldo">Cambiar</button>
-            </div>
+        <!-- CARD 2: INGRESOS TOTALES (Sueldo + Extras) -->
+        <div class="summary-card income-card">
+          <div class="card-meta">
+            <span class="card-tag">Ingresos Totales</span>
+            <button id="btnQuickEditSalary" class="link-edit-btn" title="Editar sueldo">Ajustar Sueldo</button>
           </div>
-
-          <!-- Total Gastos Card -->
-          <div class="kpi-card expense-kpi" id="kpiExpenseCard">
-            <div class="kpi-top">
-              <span class="kpi-icon-wrap expense-icon">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                  <line x1="12" y1="5" x2="12" y2="19"></line>
-                  <polyline points="19 12 12 19 5 12"></polyline>
-                </svg>
-              </span>
-              <span class="kpi-label">Gastos Totales</span>
+          <div class="card-amount-row">
+            <span class="cur-sym">$</span>
+            <h3 class="card-amount text-emerald" id="kpiTotalIncome">0</h3>
+          </div>
+          <div class="card-sub-breakdown">
+            <div class="sub-item">
+              <span class="sub-label">Sueldo Base:</span>
+              <strong class="sub-val" id="kpiSalarySub">$0</strong>
             </div>
-            <div class="kpi-value" id="kpiTotalExpenses">$0</div>
-            <div class="kpi-subtext">
-              <span>Fijos: <strong id="kpiFixedSub">$0</strong></span>
-              <span>Var: <strong id="kpiVarSub">$0</strong></span>
+            <div class="sub-item">
+              <span class="sub-label">Ingresos Extra:</span>
+              <strong class="sub-val" id="kpiExtraIncomeSub">$0</strong>
             </div>
           </div>
         </div>
+
+        <!-- CARD 3: YA PAGADAS (Completadas) -->
+        <div class="summary-card paid-card">
+          <div class="card-meta">
+            <span class="card-tag">Ya Pagado (Al Día)</span>
+            <span class="badge-count badge-paid" id="badgePaidCount">0 pagas</span>
+          </div>
+          <div class="card-amount-row">
+            <span class="cur-sym">$</span>
+            <h3 class="card-amount text-paid" id="kpiTotalPaid">0</h3>
+          </div>
+          <div class="card-sub-breakdown">
+            <div class="sub-item">
+              <span class="sub-label">Liquidez Actual:</span>
+              <strong class="sub-val text-emerald" id="kpiCashOnHand">$0</strong>
+            </div>
+            <div class="sub-item">
+              <span class="sub-label">Pagado:</span>
+              <strong class="sub-val" id="kpiPaidPct">0%</strong>
+            </div>
+          </div>
+        </div>
+
+        <!-- CARD 4: POR PAGAR / IMPAGAS (Pendientes de pago) -->
+        <div class="summary-card pending-card">
+          <div class="card-meta">
+            <span class="card-tag">Por Pagar (Impagas)</span>
+            <span class="badge-count badge-pending" id="badgePendingCount">0 pendientes</span>
+          </div>
+          <div class="card-amount-row">
+            <span class="cur-sym">$</span>
+            <h3 class="card-amount text-pending" id="kpiTotalPending">0</h3>
+          </div>
+          <div class="card-sub-breakdown">
+            <div class="sub-item">
+              <span class="sub-label">Fijos pendientes:</span>
+              <strong class="sub-val" id="kpiFixedPendingSub">$0</strong>
+            </div>
+            <div class="sub-item">
+              <span class="sub-label">Variables:</span>
+              <strong class="sub-val" id="kpiVarPendingSub">$0</strong>
+            </div>
+          </div>
+        </div>
+
       </section>
 
-      <!-- Navigation Tabs -->
-      <nav class="view-tabs" role="tablist">
-        <button class="tab-btn active" data-tab="tabExpenses" role="tab">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="2" y="5" width="20" height="14" rx="2"></rect>
-            <line x1="2" y1="10" x2="22" y2="10"></line>
-          </svg>
-          <span>Gastos</span>
-          <span class="tab-badge" id="expensesBadge">0</span>
+      <!-- ==============================================
+           ROW 3: WORKSPACE & TRACKING COLUMNS
+           ============================================== -->
+      
+      <!-- Mobile View Tabs (Only visible on small screens) -->
+      <nav class="mobile-view-tabs mobile-only" role="tablist">
+        <button class="m-tab-btn active" data-view="viewPending" role="tab">
+          <span>⏳ Por Pagar</span>
+          <span class="m-badge badge-pending" id="mBadgePending">0</span>
         </button>
-
-        <button class="tab-btn" data-tab="tabIncomes" role="tab">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="10"></circle>
-            <line x1="12" y1="8" x2="12" y2="16"></line>
-            <line x1="8" y1="12" x2="16" y2="12"></line>
-          </svg>
-          <span>Ingresos y Sueldo</span>
-          <span class="tab-badge" id="incomesBadge">0</span>
+        <button class="m-tab-btn" data-view="viewPaid" role="tab">
+          <span>✅ Pagadas</span>
+          <span class="m-badge badge-paid" id="mBadgePaid">0</span>
         </button>
-
-        <button class="tab-btn" data-tab="tabStats" role="tab">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M18 20V10M12 20V4M6 20v-6"></path>
-          </svg>
-          <span>Análisis</span>
+        <button class="m-tab-btn" data-view="viewIncomes" role="tab">
+          <span>💰 Sueldo/Extras</span>
+        </button>
+        <button class="m-tab-btn" data-view="viewStats" role="tab">
+          <span>📊 Análisis</span>
         </button>
       </nav>
 
-      <!-- TAB 1: GASTOS -->
-      <section id="tabExpenses" class="tab-content active">
-        <!-- Filter and Search Bar -->
-        <div class="filters-row">
-          <div class="search-box">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="11" cy="11" r="8"></circle>
-              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-            </svg>
-            <input type="text" id="expenseSearchInput" placeholder="Buscar gasto..." autocomplete="off">
-          </div>
-
-          <div class="filter-pills-scroll">
-            <button class="filter-pill active" data-filter="all">Todos</button>
-            <button class="filter-pill" data-filter="fixed">Fijos</button>
-            <button class="filter-pill" data-filter="variable">Variables</button>
-          </div>
+      <!-- Filter Controls Bar (Search + Quick Filter Pills) -->
+      <section class="workspace-filters-bar">
+        <div class="search-input-wrap">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <input type="text" id="expenseSearchInput" placeholder="Buscar gasto por nombre, concepto o categoría..." autocomplete="off">
         </div>
 
-        <!-- Expenses List Container -->
-        <div class="list-wrapper">
-          <div id="expensesList" class="items-list">
-            <!-- Dynamic expense items will render here -->
-          </div>
-
-          <!-- Empty State -->
-          <div id="expensesEmptyState" class="empty-state" style="display: none;">
-            <div class="empty-icon">💸</div>
-            <p class="empty-title">Sin gastos este mes</p>
-            <p class="empty-subtitle">Agregá tus gastos del día o gastos fijos para llevar el control.</p>
-            <button class="btn-primary btn-sm open-expense-modal">
-              + Agregar primer gasto
-            </button>
-          </div>
+        <div class="filter-pills-row">
+          <button class="filter-pill active" data-filter="all">Todos los gastos</button>
+          <button class="filter-pill" data-filter="pending">⏳ Solo Impagas</button>
+          <button class="filter-pill" data-filter="paid">✅ Solo Pagadas</button>
+          <button class="filter-pill" data-filter="fixed">🔄 Gastos Fijos</button>
+          <button class="filter-pill" data-filter="variable">🏷️ Variables</button>
         </div>
       </section>
 
-      <!-- TAB 2: INGRESOS & SUELDO -->
-      <section id="tabIncomes" class="tab-content">
-        <!-- Salary Configuration Box -->
-        <div class="salary-card">
-          <div class="salary-card-header">
-            <div class="salary-card-title">
-              <span class="icon-avatar">💼</span>
+      <!-- Two-Column Grid on Desktop / Tabbed Container on Mobile -->
+      <div class="workspace-columns-grid">
+
+        <!-- ==========================================
+             COLUMN 1: POR PAGAR / IMPAGAS (URGENTE)
+             ========================================== -->
+        <section class="column-panel panel-pending active-mobile" id="viewPending">
+          <div class="panel-header">
+            <div class="panel-title-wrap">
+              <span class="panel-icon icon-pending">⏳</span>
               <div>
-                <h3>Sueldo Mensual Base</h3>
-                <p>Impacta directamente todos los meses en tu saldo</p>
+                <h3 class="panel-title">Por Pagar / Impagas</h3>
+                <span class="panel-subtitle">Compromisos pendientes a cancelar</span>
               </div>
             </div>
-            <button class="btn-ghost" id="btnEditSalaryCard">Editar</button>
-          </div>
-          <div class="salary-amount-display" id="salaryDisplayBig">$0</div>
-        </div>
-
-        <div class="section-divider">
-          <h4>Otros Ingresos del Mes</h4>
-          <button class="btn-secondary btn-sm open-income-modal">+ Ingreso extra</button>
-        </div>
-
-        <!-- Incomes List -->
-        <div class="list-wrapper">
-          <div id="incomesList" class="items-list">
-            <!-- Dynamic income items -->
+            <div class="panel-header-badge" id="panelPendingTotal">$0</div>
           </div>
 
-          <div id="incomesEmptyState" class="empty-state" style="display: none;">
-            <div class="empty-icon">💰</div>
-            <p class="empty-title">Sin ingresos extra registrados</p>
-            <p class="empty-subtitle">Podés registrar ventas, extras o cobros especiales que sumen a tu saldo.</p>
+          <!-- Pending Items List -->
+          <div id="pendingExpensesList" class="cards-list">
+            <!-- Dynamic pending items -->
+          </div>
+
+          <!-- Empty State: When all is paid! -->
+          <div id="pendingEmptyState" class="empty-state-panel" style="display: none;">
+            <div class="empty-state-icon">🎉</div>
+            <h4 class="empty-state-title">¡Todo pago y al día!</h4>
+            <p class="empty-state-desc">No tenés cuentas pendientes para este mes. Todos tus gastos están cubiertos.</p>
+          </div>
+        </section>
+
+        <!-- ==========================================
+             COLUMN 2: YA PAGADAS & HISTORIAL
+             ========================================== -->
+        <section class="column-panel panel-paid" id="viewPaid">
+          <div class="panel-header">
+            <div class="panel-title-wrap">
+              <span class="panel-icon icon-paid">✅</span>
+              <div>
+                <h3 class="panel-title">Ya Pagadas</h3>
+                <span class="panel-subtitle">Gastos y compromisos cancelados</span>
+              </div>
+            </div>
+            <div class="panel-header-badge paid-total" id="panelPaidTotal">$0</div>
+          </div>
+
+          <!-- Paid Items List -->
+          <div id="paidExpensesList" class="cards-list">
+            <!-- Dynamic paid items -->
+          </div>
+
+          <!-- Empty State for Paid -->
+          <div id="paidEmptyState" class="empty-state-panel" style="display: none;">
+            <div class="empty-state-icon">📋</div>
+            <h4 class="empty-state-title">Ningún gasto marcado como pago</h4>
+            <p class="empty-state-desc">A medida que pagues tus cuentas o registres compras, aparecerán acá.</p>
+          </div>
+        </section>
+
+      </div>
+
+      <!-- ==============================================
+           ROW 4: SUELDO, INGRESOS Y ANÁLISIS (SPLIT CARDS)
+           ============================================== -->
+      <section class="secondary-workspace-grid">
+        
+        <!-- INCOMES & SALARY MANAGER -->
+        <div class="column-panel" id="viewIncomes">
+          <div class="panel-header">
+            <div class="panel-title-wrap">
+              <span class="panel-icon">💼</span>
+              <div>
+                <h3 class="panel-title">Sueldo e Ingresos Extra</h3>
+                <span class="panel-subtitle">Impactan sumando directo a tu saldo</span>
+              </div>
+            </div>
+            <button class="btn-primary btn-sm open-income-modal">+ Ingreso extra</button>
+          </div>
+
+          <!-- Salary Card Banner -->
+          <div class="salary-interactive-banner">
+            <div class="salary-banner-left">
+              <span class="salary-tag">Sueldo Base Mensual</span>
+              <div class="salary-display-val" id="salaryDisplayBig">$0</div>
+            </div>
+            <button class="btn-secondary btn-sm" id="btnEditSalaryCard">Modificar Sueldo</button>
+          </div>
+
+          <!-- Incomes List -->
+          <div id="incomesList" class="cards-list">
+            <!-- Incomes render here -->
+          </div>
+
+          <div id="incomesEmptyState" class="empty-state-panel" style="display: none;">
+            <div class="empty-state-icon">💵</div>
+            <h4 class="empty-state-title">Sin ingresos extra</h4>
+            <p class="empty-state-desc">Registrá trabajos freelance, ventas u otros cobros del mes.</p>
           </div>
         </div>
-      </section>
 
-      <!-- TAB 3: ANÁLISIS -->
-      <section id="tabStats" class="tab-content">
-        <div class="stats-card">
-          <h3 class="card-heading">Distribución por Categoría</h3>
+        <!-- STATS & CATEGORY BREAKDOWN -->
+        <div class="column-panel" id="viewStats">
+          <div class="panel-header">
+            <div class="panel-title-wrap">
+              <span class="panel-icon">📊</span>
+              <div>
+                <h3 class="panel-title">Desglose y Categorías</h3>
+                <span class="panel-subtitle">Distribución porcentual del mes</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Categories List -->
           <div id="categoryBreakdownList" class="category-bars-list">
             <!-- Category bars -->
           </div>
-        </div>
 
-        <div class="stats-card">
-          <h3 class="card-heading">Relación Fijos vs Variables</h3>
-          <div class="comparison-bar-wrap">
-            <div class="comparison-bar">
-              <div class="comp-fixed" id="barCompFixed" style="width: 50%;"></div>
-              <div class="comp-var" id="barCompVar" style="width: 50%;"></div>
+          <!-- Comparison Fijo vs Variable -->
+          <div class="comparison-panel-box">
+            <div class="comp-header">
+              <span>Gastos Fijos vs Variables</span>
+              <span id="compRatioLabel">50% / 50%</span>
+            </div>
+            <div class="comp-track">
+              <div class="comp-fill-fixed" id="barCompFixed" style="width: 50%;"></div>
+              <div class="comp-fill-var" id="barCompVar" style="width: 50%;"></div>
             </div>
             <div class="comp-legend">
-              <div class="legend-item"><span class="dot dot-fixed"></span> Fijos: <strong id="legendFixedVal">$0</strong></div>
-              <div class="legend-item"><span class="dot dot-var"></span> Variables: <strong id="legendVarVal">$0</strong></div>
+              <span class="legend-item"><span class="dot dot-fixed"></span> Fijos: <strong id="legendFixedVal">$0</strong></span>
+              <span class="legend-item"><span class="dot dot-var"></span> Variables: <strong id="legendVarVal">$0</strong></span>
             </div>
           </div>
         </div>
+
       </section>
 
     </main>
 
-    <!-- Bottom Floating Action Bar -->
-    <footer class="app-bottom-bar">
+    <!-- Bottom Floating Action Bar (Mobile Only) -->
+    <footer class="app-bottom-bar mobile-only">
       <button class="fab-btn open-expense-modal" id="fabAddExpense">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
           <line x1="12" y1="5" x2="12" y2="19"></line>
@@ -279,7 +406,7 @@
         <span>Nuevo Gasto</span>
       </button>
 
-      <button class="btn-secondary-action open-income-modal" id="fabAddIncome" title="Agregar ingreso extra">
+      <button class="btn-secondary-action open-income-modal" id="fabAddIncome">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
           <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline>
           <polyline points="17 6 23 6 23 12"></polyline>
@@ -302,7 +429,7 @@
         <form id="formExpense" class="modal-form">
           <input type="hidden" id="expenseEditId" value="">
 
-          <!-- Monto Principal Grande -->
+          <!-- Monto Principal -->
           <div class="amount-input-group">
             <span class="amount-prefix">$</span>
             <input type="number" id="expenseAmount" step="0.01" min="0" placeholder="0" required autofocus inputmode="decimal">
@@ -311,38 +438,58 @@
           <!-- Concepto -->
           <div class="form-group">
             <label for="expenseTitle">Concepto o Descripción</label>
-            <input type="text" id="expenseTitle" placeholder="Ej. Supermercado, Alquiler, Nafta..." required>
+            <input type="text" id="expenseTitle" placeholder="Ej. Alquiler, Internet, Supermercado..." required>
           </div>
 
-          <!-- Fecha (Defaults to today automatically) -->
-          <div class="form-group">
-            <label for="expenseDate">Fecha del gasto</label>
-            <input type="date" id="expenseDate" required>
-            <span class="field-hint">Se asigna automáticamente el día de hoy</span>
+          <!-- Fechas: Fecha de registro y Vencimiento -->
+          <div class="form-row-2">
+            <div class="form-group">
+              <label for="expenseDate">Fecha del gasto</label>
+              <input type="date" id="expenseDate" required>
+            </div>
+            <div class="form-group">
+              <label for="expenseDueDate">Fecha de vencimiento</label>
+              <input type="date" id="expenseDueDate" required>
+            </div>
           </div>
 
           <!-- Categoría -->
           <div class="form-group">
             <label for="expenseCategory">Categoría</label>
             <select id="expenseCategory">
-              <option value="Comida">🍔 Comida y Supermercado</option>
               <option value="Servicios">💡 Servicios e Impuestos</option>
-              <option value="Alquiler">🏠 Alquiler y Hogar</option>
+              <option value="Alquiler">🏠 Alquiler y Expensas</option>
+              <option value="Comida">🍔 Comida y Supermercado</option>
               <option value="Transporte">🚗 Transporte y Nafta</option>
+              <option value="Tarjetas">💳 Tarjetas y Cuotas</option>
               <option value="Salud">💊 Salud y Farmacia</option>
               <option value="Ocio">🎉 Ocio y Salidas</option>
-              <option value="Tarjetas">💳 Tarjetas y Cuotas</option>
               <option value="Educación">📚 Educación</option>
               <option value="Otros" selected>📦 Otros</option>
             </select>
           </div>
 
-          <!-- Gasto Fijo Toggle Card -->
+          <!-- Estado de pago inmediato -->
+          <div class="payment-status-selector">
+            <span class="selector-label">Estado inicial del gasto:</span>
+            <div class="status-options-row">
+              <label class="status-radio-label">
+                <input type="radio" name="expensePaidStatus" id="statusUnpaid" value="false">
+                <span class="radio-pill pill-unpaid">⏳ Por Pagar (Impago)</span>
+              </label>
+              <label class="status-radio-label">
+                <input type="radio" name="expensePaidStatus" id="statusPaid" value="true" checked>
+                <span class="radio-pill pill-paid">✅ Ya Pagado</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Gasto Fijo Switch -->
           <div class="fixed-expense-card">
             <div class="fixed-toggle-row">
               <div class="fixed-toggle-info">
-                <span class="fixed-title">¿Es un gasto fijo?</span>
-                <span class="fixed-desc">Para servicios recurrentes, cuotas o compromisos periódicos</span>
+                <span class="fixed-title">¿Es un gasto fijo / recurrente?</span>
+                <span class="fixed-desc">Servicios mensuales, cuotas o compromisos periódicos</span>
               </div>
               <label class="switch">
                 <input type="checkbox" id="expenseIsFixed">
@@ -350,7 +497,6 @@
               </label>
             </div>
 
-            <!-- Fixed Details Sub-Panel -->
             <div id="fixedDetailsPanel" class="fixed-details-panel" style="display: none;">
               <div class="form-row-2">
                 <div class="form-group">
@@ -366,7 +512,7 @@
                 <div class="form-group" id="groupFixedDuration">
                   <label for="expenseFixedDuration">¿Por cuánto tiempo?</label>
                   <input type="number" id="expenseFixedDuration" min="1" max="120" value="1" placeholder="Ej. 6">
-                  <span class="field-hint" id="fixedDurationHint">Impactará por esa cantidad</span>
+                  <span class="field-hint" id="fixedDurationHint">Se repetirá por esa cantidad</span>
                 </div>
               </div>
             </div>
@@ -387,7 +533,7 @@
       </div>
     </div>
 
-    <!-- Modal: Nuevo / Editar Ingreso Extra -->
+    <!-- Modal: Nuevo Ingreso Extra -->
     <div class="modal-backdrop" id="modalIncomeBackdrop">
       <div class="modal-sheet" id="modalIncomeSheet">
         <div class="modal-handle"></div>
@@ -412,7 +558,6 @@
           <div class="form-group">
             <label for="incomeDate">Fecha del ingreso</label>
             <input type="date" id="incomeDate" required>
-            <span class="field-hint">Se asigna automáticamente el día de hoy</span>
           </div>
 
           <div class="form-group">
@@ -467,6 +612,34 @@
             <button type="submit" class="btn-primary btn-emerald" id="btnSaveSalary">Guardar Sueldo</button>
           </div>
         </form>
+      </div>
+    </div>
+
+    <!-- Modal: Panel de Notificaciones y Alertas -->
+    <div class="modal-backdrop" id="modalNotificationsBackdrop">
+      <div class="modal-sheet" id="modalNotificationsSheet">
+        <div class="modal-handle"></div>
+        <div class="modal-header">
+          <div class="modal-title-with-icon">
+            <span>🔔</span>
+            <h3>Alertas y Notificaciones</h3>
+          </div>
+          <button class="modal-close-btn" id="btnCloseNotificationsModal">&times;</button>
+        </div>
+
+        <div class="notifications-panel-content">
+          <div class="notifications-browser-prompt">
+            <div>
+              <strong>Notificaciones de Navegador</strong>
+              <p>Recibí recordatorios de cuentas a pagar en tu celular o PC.</p>
+            </div>
+            <button id="btnEnableBrowserNotifications" class="btn-secondary btn-sm">Activar</button>
+          </div>
+
+          <div id="notificationsItemsList" class="notifications-list">
+            <!-- Dynamic alerts and reminders -->
+          </div>
+        </div>
       </div>
     </div>
 
