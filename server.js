@@ -18,7 +18,7 @@ app.use(express.urlencoded({ extended: true }));
 
 // Custom caching header logic for PWA
 app.use((req, res, next) => {
-  if (req.path === '/sw.js' || req.path === '/manifest.json') {
+  if (req.path === '/sw.js' || req.path === '/manifest.json' || req.path === '/' || req.path === '/index.html') {
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
   } else if (req.path.startsWith('/api/')) {
     res.setHeader('Cache-Control', 'no-cache');
