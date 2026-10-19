@@ -1,19 +1,19 @@
 {
   "name": "gastosapp",
-  "version": "1.0.0",
-  "description": "PWA de control de gastos, sueldo e ingresos - NanoLabs",
-  "main": "server.js",
+  "version": "2.0.0",
   "type": "module",
+  "private": true,
+  "description": "GastosApp fintech PWA — finanzas argentinas, cuotas y voz",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "start": "node server.js",
-    "dev": "node --watch server.js"
+    "dev": "node --watch server.js",
+    "test": "node --test"
   },
-  "keywords": ["pwa", "gastos", "finanzas", "nanolabs"],
-  "author": "NanoLabs",
-  "license": "MIT",
   "dependencies": {
     "compression": "^1.7.5",
-    "cors": "^2.8.5",
     "express": "^4.21.2"
   }
 }

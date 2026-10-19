@@ -1,0 +1,17 @@
+name: GastosApp CI
+on:
+  push:
+    branches: [main, feat/fintech-voice-v2]
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --omit=dev
+      - run: npm test
+      - run: node --check server.js && node --check public/app.js && node --check db.js
