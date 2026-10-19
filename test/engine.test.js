@@ -66,3 +66,14 @@ test('gastos recurrentes generan vencimientos separados',()=>{
  assert.equal(oct.paid,30000);assert.equal(oct.pending,0);
  assert.equal(nov.pending,30000);assert.equal(nov.rows[0].id,'internet:2026-11');
 });
+
+test('Visa débito es débito, no compra de crédito',()=>{
+ const r=interpret('Compré ropa por 25 lucas con Visa débito',[
+   {id:'visa',name:'Visa',kind:'credit'},{id:'debit',name:'Débito',kind:'debit'}
+ ],new Date(2026,9,19));
+ assert.equal(r.accountId,'debit');assert.equal(r.installmentCount,1);
+});
+test('cuotas sobre billetera se marcan para revisión',()=>{
+ const r=interpret('Compré 100 lucas en 3 cuotas con MP',[mp],new Date(2026,9,19));
+ assert.equal(r.installmentCount,3);assert.ok(r.questions.length>0);
+});
