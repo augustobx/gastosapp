@@ -1,8 +1,6 @@
 services:
   web:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    build: .
     container_name: gastosapp-web
     restart: unless-stopped
     environment:
@@ -10,33 +8,28 @@ services:
       PORT: 3000
       DATA_DIR: /app/data
       TZ: America/Argentina/Buenos_Aires
+      APP_PASSWORD: ${APP_PASSWORD:?Definir APP_PASSWORD con al menos 12 caracteres en .env}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_NLU_MODEL: ${OPENAI_NLU_MODEL:-gpt-4o-mini}
+      OPENAI_STT_MODEL: ${OPENAI_STT_MODEL:-gpt-4o-mini-transcribe}
     volumes:
       - gastosapp-data:/app/data
     networks:
       - proxy
     healthcheck:
-      test:
-        [
-          "CMD",
-          "node",
-          "-e",
-          "fetch('http://127.0.0.1:3000/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
-        ]
+      test: ["CMD","node","-e","fetch('http://127.0.0.1:3000/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
       interval: 15s
       timeout: 5s
       retries: 5
       start_period: 15s
-    stop_grace_period: 15s
     logging:
-      driver: "json-file"
+      driver: json-file
       options:
         max-size: "10m"
         max-file: "3"
-
 volumes:
   gastosapp-data:
     name: gastosapp-data
-
 networks:
   proxy:
     external: true

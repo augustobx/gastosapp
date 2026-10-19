@@ -1,592 +1,178 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import crypto from 'node:crypto';
+import { uid, isoDay, money, monthOf, schedule, project } from './lib/engine.js';
 
-const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), 'data');
-const DATA_FILE = path.join(DATA_DIR, 'gastosapp.json');
-
-// Ensure data directory exists
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
+const dataDir = process.env.DATA_DIR || path.join(process.cwd(), 'data');
+const dataFile = path.join(dataDir, 'gastosapp-v2.json');
+fs.mkdirSync(dataDir, {recursive:true});
+const defaults = () => ({
+  version: 2,
+  settings: {salary:0, currency:'ARS'},
+  accounts: [
+    {id:'cash', name:'Efectivo', kind:'cash'},
+    {id:'transfer', name:'Transferencia', kind:'transfer'},
+    {id:'mp', name:'Mercado Pago', kind:'wallet'},
+    {id:'debit', name:'Débito', kind:'debit'},
+    {id:'visa', name:'Visa', kind:'credit', closingDay:25, dueDay:10},
+    {id:'master', name:'Mastercard', kind:'credit', closingDay:25, dueDay:10}
+  ],
+  transactions:[],
+  purchases:[]
+});
+let state;
+function get() {
+  if (state) return state;
+  if (!fs.existsSync(dataFile)) { state = defaults(); persist(); return state; }
+  const parsed = JSON.parse(fs.readFileSync(dataFile, 'utf8'));
+  if (parsed.version !== 2 || !Array.isArray(parsed.transactions) || !Array.isArray(parsed.purchases)) {
+    throw new Error('Esquema incompatible. Revisar respaldo antes de continuar.');
+  }
+  state = parsed;
+  return state;
 }
-
-const DEFAULT_STATE = {
-  settings: {
-    salary: 0,
-    currency: '$',
-    currencyCode: 'ARS',
-    updatedAt: new Date().toISOString()
-  },
-  expenses: [],
-  incomes: []
+function persist() {
+  const temp = dataFile+'.'+process.pid+'.tmp';
+  fs.writeFileSync(temp, JSON.stringify(state, null, 2), {mode:0o600});
+  fs.renameSync(temp, dataFile);
+}
+const finiteAmount = value => {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0 || n > 1e12) throw new Error('Ingresá un importe positivo válido');
+  return money(n);
 };
-
-// In-memory cache synced to disk
-let dbState = null;
-
-function loadDatabase() {
-  if (dbState) return dbState;
-
-  if (!fs.existsSync(DATA_FILE)) {
-    saveDatabase(DEFAULT_STATE);
-    dbState = structuredClone(DEFAULT_STATE);
-    return dbState;
-  }
-
-  try {
-    const raw = fs.readFileSync(DATA_FILE, 'utf-8');
-    const parsed = JSON.parse(raw);
-    dbState = {
-      settings: { ...DEFAULT_STATE.settings, ...(parsed.settings || {}) },
-      expenses: Array.isArray(parsed.expenses) ? parsed.expenses.map(e => ({
-        ...e,
-        isPaid: typeof e.isPaid !== 'undefined' ? Boolean(e.isPaid) : true,
-        paidAt: e.paidAt || (e.isPaid ? e.date : null),
-        dueDate: e.dueDate || e.date
-      })) : [],
-      incomes: Array.isArray(parsed.incomes) ? parsed.incomes : []
-    };
-    return dbState;
-  } catch (err) {
-    console.error('Error reading database file, creating backup and starting fresh:', err);
-    try {
-      if (fs.existsSync(DATA_FILE)) {
-        fs.copyFileSync(DATA_FILE, `${DATA_FILE}.corrupt.${Date.now()}`);
+const dateField = value => {
+  const v = String(value || isoDay(new Date()));
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) throw new Error('Fecha inválida');
+  const [y,m,d] = v.split('-').map(Number);
+  const valid = new Date(y,m-1,d);
+  if (valid.getFullYear()!==y || valid.getMonth()+1!==m || valid.getDate()!==d) throw new Error('Fecha inválida');
+  return v;
+};
+const titleField = value => {
+  const v = String(value||'').trim();
+  if (!v || v.length > 140) throw new Error('Concepto requerido (hasta 140 caracteres)');
+  return v;
+};
+const validateAccount = (s,id) => {
+  if (!id) return null;
+  if (!s.accounts.some(x=>x.id===id)) throw new Error('Medio de pago no encontrado');
+  return id;
+};
+const clampText = value=>String(value||'').slice(0,450);
+const categoryField = value=>String(value||'Otros').slice(0,60);
+const kindEnum = ['cash','debit','credit','wallet','transfer','other'];
+export const store = {
+  snapshot(month=monthOf(isoDay(new Date()))) {
+    const s=get();
+    if (!/^\d{4}-\d{2}$/.test(month)) throw new Error('Mes inválido');
+    return {version:s.version, settings:s.settings, accounts:s.accounts, ...project(s,month),
+      purchases:s.purchases.map(p=>({id:p.id,title:p.title,amount:p.amount,date:p.date,
+        count:p.installments.length,accountId:p.accountId}))};
+  },
+  settings(data) {
+    const s=get();
+    if (data.salary !== undefined) {
+      const n=Number(data.salary);
+      if (!Number.isFinite(n)||n<0||n>1e12) throw new Error('Sueldo inválido');
+      s.settings.salary=money(n);
+    }
+    persist();return s.settings;
+  },
+  addAccount(data) {
+    const s=get();
+    const name=titleField(data.name);
+    const kind=String(data.kind||'other');
+    if (!kindEnum.includes(kind)) throw new Error('Tipo de medio de pago inválido');
+    if (s.accounts.some(a=>a.name.toLowerCase()===name.toLowerCase())) throw new Error('Ese medio ya existe');
+    const a={id:uid(),name,kind};
+    if(kind==='credit') {
+      for(const key of ['closingDay','dueDay']){
+        const day=Number(data[key]);
+        if(!Number.isInteger(day)||day<1||day>28)throw new Error('Elegí días entre 1 y 28');
+        a[key]=day;
       }
-    } catch {}
-    dbState = structuredClone(DEFAULT_STATE);
-    saveDatabase(dbState);
-    return dbState;
-  }
-}
-
-function saveDatabase(state = dbState) {
-  if (!state) return;
-  const tmpFile = `${DATA_FILE}.tmp.${Date.now()}`;
-  const serialized = JSON.stringify(state, null, 2);
-  fs.writeFileSync(tmpFile, serialized, 'utf-8');
-  fs.renameSync(tmpFile, DATA_FILE);
-  dbState = state;
-}
-
-// Helper: generate unique id
-function generateId() {
-  return crypto.randomUUID ? crypto.randomUUID() : `id_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-}
-
-// Check if fixed expense applies to month YYYY-MM
-function doesFixedExpenseApplyToMonth(expense, targetMonth) {
-  if (!expense.isFixed) {
-    return (expense.date || '').startsWith(targetMonth);
-  }
-
-  const expDate = expense.date || '';
-  const expMonth = expDate.substring(0, 7); // 'YYYY-MM'
-  if (!expMonth) return false;
-
-  // If before expense started, does not apply
-  if (targetMonth < expMonth) return false;
-
-  const fixedType = expense.fixedType || 'permanente';
-  const duration = parseInt(expense.fixedDuration, 10) || 0;
-
-  if (fixedType === 'permanente') {
-    return targetMonth >= expMonth;
-  }
-
-  if (fixedType === 'meses') {
-    if (duration <= 0) return targetMonth === expMonth;
-    const [startYear, startM] = expMonth.split('-').map(Number);
-    const [targetYear, targetM] = targetMonth.split('-').map(Number);
-    const monthDiff = (targetYear - startYear) * 12 + (targetM - startM);
-    return monthDiff >= 0 && monthDiff < duration;
-  }
-
-  if (fixedType === 'dias' || fixedType === 'semanas') {
-    const startObj = new Date(`${expDate}T00:00:00`);
-    let endObj = new Date(startObj);
-    if (fixedType === 'dias') {
-      endObj.setDate(endObj.getDate() + (duration || 30));
-    } else {
-      endObj.setDate(endObj.getDate() + ((duration || 4) * 7));
     }
-
-    const [tY, tM] = targetMonth.split('-').map(Number);
-    const monthStart = new Date(tY, tM - 1, 1);
-    const monthEnd = new Date(tY, tM, 0, 23, 59, 59);
-
-    return startObj <= monthEnd && endObj >= monthStart;
-  }
-
-  return (expense.date || '').startsWith(targetMonth);
-}
-
-export const db = {
-  getSettings() {
-    const state = loadDatabase();
-    return { ...state.settings };
+    s.accounts.push(a);persist();return a;
   },
-
-  updateSettings(updates) {
-    const state = loadDatabase();
-    if (typeof updates.salary !== 'undefined') {
-      const parsedSalary = Number.parseFloat(updates.salary);
-      state.settings.salary = Number.isNaN(parsedSalary) ? 0 : Math.max(0, parsedSalary);
+  editAccount(id,data) {
+    const s=get(),a=s.accounts.find(x=>x.id===id);
+    if(!a)throw new Error('Medio no encontrado');
+    if(data.name!==undefined)a.name=titleField(data.name);
+    if(data.kind!==undefined) {
+      if(!kindEnum.includes(data.kind))throw new Error('Tipo inválido');
+      if(a.kind==='credit' && data.kind!=='credit' && s.purchases.some(p=>p.accountId===id))
+        throw new Error('Hay cuotas ligadas a esta tarjeta');
+      a.kind=data.kind;
     }
-    if (typeof updates.currency === 'string') {
-      state.settings.currency = updates.currency.trim() || '$';
-    }
-    if (typeof updates.currencyCode === 'string') {
-      state.settings.currencyCode = updates.currencyCode.trim().toUpperCase() || 'ARS';
-    }
-    state.settings.updatedAt = new Date().toISOString();
-    saveDatabase(state);
-    return { ...state.settings };
-  },
-
-  getExpenses({ month, category, isFixed, isPaid, search } = {}) {
-    const state = loadDatabase();
-    let list = [...state.expenses];
-
-    if (month) {
-      list = list.filter(exp => doesFixedExpenseApplyToMonth(exp, month));
-    }
-
-    if (category && category !== 'all') {
-      list = list.filter(exp => exp.category === category);
-    }
-
-    if (typeof isFixed !== 'undefined' && isFixed !== null) {
-      const fixedBool = isFixed === true || isFixed === 'true' || isFixed === '1';
-      list = list.filter(exp => Boolean(exp.isFixed) === fixedBool);
-    }
-
-    if (typeof isPaid !== 'undefined' && isPaid !== null) {
-      const paidBool = isPaid === true || isPaid === 'true' || isPaid === '1';
-      list = list.filter(exp => Boolean(exp.isPaid) === paidBool);
-    }
-
-    if (search && search.trim()) {
-      const q = search.trim().toLowerCase();
-      list = list.filter(exp =>
-        (exp.title || '').toLowerCase().includes(q) ||
-        (exp.category || '').toLowerCase().includes(q) ||
-        (exp.notes || '').toLowerCase().includes(q)
-      );
-    }
-
-    // Sort: uncompleted/unpaid first, then by date descending
-    list.sort((a, b) => {
-      if (a.isPaid !== b.isPaid) {
-        return a.isPaid ? 1 : -1; // Unpaid first
+    if(a.kind==='credit'){
+      for(const key of ['closingDay','dueDay'])if(data[key]!==undefined){
+        const v=Number(data[key]);if(!Number.isInteger(v)||v<1||v>28)throw new Error('Día inválido');
+        a[key]=v;
       }
-      return (b.date || '').localeCompare(a.date || '') || b.createdAt.localeCompare(a.createdAt);
-    });
-
-    return list;
+      a.closingDay??=25;a.dueDay??=10;
+    }
+    persist();return a;
   },
-
-  getExpenseById(id) {
-    const state = loadDatabase();
-    return state.expenses.find(e => e.id === id) || null;
+  deleteAccount(id) {
+    const s=get();
+    if(s.transactions.some(t=>t.accountId===id)||s.purchases.some(p=>p.accountId===id))
+      throw new Error('Este medio tiene movimientos asociados');
+    const i=s.accounts.findIndex(a=>a.id===id);
+    if(i===-1)throw new Error('Medio no encontrado');
+    s.accounts.splice(i,1);persist();return true;
   },
-
-  addExpense(data) {
-    const state = loadDatabase();
-    const amount = Number.parseFloat(data.amount);
-    if (Number.isNaN(amount) || amount <= 0) {
-      throw new Error('El monto debe ser un número positivo mayor a 0');
+  add(data) {
+    const s=get();
+    const type=String(data.type||'expense');
+    if(!['expense','income'].includes(type))throw new Error('Tipo de movimiento inválido');
+    const amount=finiteAmount(data.amount);
+    const date=dateField(data.date);
+    const title=titleField(data.title);
+    const accountId=validateAccount(s,data.accountId);
+    const category=categoryField(data.category);
+    const notes=clampText(data.notes);
+    const count=Number(data.installmentCount||1);
+    if(!Number.isInteger(count)||count<1||count>60)throw new Error('Cuotas inválidas');
+    if(type==='income' && count!==1)throw new Error('Los ingresos no admiten cuotas');
+    const a=s.accounts.find(a=>a.id===accountId);
+    if(type==='expense' && (count>1 || a?.kind==='credit')) {
+      if(count>1 && a?.kind!=='credit')throw new Error('Seleccioná una tarjeta de crédito para las cuotas');
+      const purchase={id:uid(),title,amount,date,category,notes,accountId,
+        installments:schedule({amount,count,date,account:a}),createdAt:new Date().toISOString()};
+      s.purchases.unshift(purchase);persist();return {kind:'purchase',data:purchase};
     }
-
-    const now = new Date().toISOString();
-    const today = now.split('T')[0];
-    const isFixed = Boolean(data.isFixed);
-    
-    // Default isPaid: if explicit boolean, use it. Otherwise, fixed expenses default to unpaid (pending to pay), variable defaults to paid
-    let isPaid = true;
-    if (typeof data.isPaid !== 'undefined') {
-      isPaid = Boolean(data.isPaid);
-    } else if (isFixed) {
-      isPaid = false;
-    }
-
-    const expense = {
-      id: generateId(),
-      date: data.date || today,
-      dueDate: data.dueDate || data.date || today,
-      title: (data.title || 'Gasto sin título').trim(),
-      amount: Math.round(amount * 100) / 100,
-      category: data.category || 'Otros',
-      isFixed,
-      fixedType: data.fixedType || 'meses',
-      fixedDuration: data.fixedDuration !== undefined ? data.fixedDuration : '1',
-      isPaid,
-      paidAt: isPaid ? (data.paidAt || now) : null,
-      notes: (data.notes || '').trim(),
-      createdAt: now,
-      updatedAt: now
-    };
-
-    state.expenses.unshift(expense);
-    saveDatabase(state);
-    return expense;
+    const t={id:uid(),type,title,amount,date,category,accountId,notes,
+      isPaid:data.isPaid !== false,paidAt:data.isPaid===false?null:new Date().toISOString(),
+      createdAt:new Date().toISOString()};
+    s.transactions.unshift(t);persist();return {kind:'transaction',data:t};
   },
-
-  updateExpense(id, data) {
-    const state = loadDatabase();
-    const index = state.expenses.findIndex(e => e.id === id);
-    if (index === -1) return null;
-
-    const current = state.expenses[index];
-    const amount = data.amount !== undefined ? Number.parseFloat(data.amount) : current.amount;
-    if (Number.isNaN(amount) || amount <= 0) {
-      throw new Error('El monto debe ser un número positivo mayor a 0');
-    }
-
-    let isPaid = current.isPaid;
-    let paidAt = current.paidAt;
-    if (typeof data.isPaid !== 'undefined') {
-      isPaid = Boolean(data.isPaid);
-      paidAt = isPaid ? (current.paidAt || new Date().toISOString()) : null;
-    }
-
-    const updated = {
-      ...current,
-      date: data.date !== undefined ? data.date : current.date,
-      dueDate: data.dueDate !== undefined ? data.dueDate : (current.dueDate || current.date),
-      title: data.title !== undefined ? data.title.trim() : current.title,
-      amount: Math.round(amount * 100) / 100,
-      category: data.category !== undefined ? data.category : current.category,
-      isFixed: data.isFixed !== undefined ? Boolean(data.isFixed) : current.isFixed,
-      fixedType: data.fixedType !== undefined ? data.fixedType : current.fixedType,
-      fixedDuration: data.fixedDuration !== undefined ? data.fixedDuration : current.fixedDuration,
-      isPaid,
-      paidAt,
-      notes: data.notes !== undefined ? data.notes.trim() : current.notes,
-      updatedAt: new Date().toISOString()
-    };
-
-    state.expenses[index] = updated;
-    saveDatabase(state);
-    return updated;
+  editTransaction(id,data) {
+    const s=get();const t=s.transactions.find(x=>x.id===id);
+    if(!t)throw new Error('Movimiento no encontrado');
+    if(data.amount!==undefined)t.amount=finiteAmount(data.amount);
+    if(data.title!==undefined)t.title=titleField(data.title);
+    if(data.date!==undefined)t.date=dateField(data.date);
+    if(data.category!==undefined)t.category=categoryField(data.category);
+    if(data.notes!==undefined)t.notes=clampText(data.notes);
+    if(data.accountId!==undefined)t.accountId=validateAccount(s,data.accountId);
+    if(data.isPaid!==undefined) {t.isPaid=Boolean(data.isPaid);t.paidAt=t.isPaid?new Date().toISOString():null;}
+    persist();return t;
   },
-
-  toggleExpensePaid(id, forceStatus) {
-    const state = loadDatabase();
-    const index = state.expenses.findIndex(e => e.id === id);
-    if (index === -1) return null;
-
-    const current = state.expenses[index];
-    const newPaidStatus = typeof forceStatus !== 'undefined' ? Boolean(forceStatus) : !current.isPaid;
-    const now = new Date().toISOString();
-
-    current.isPaid = newPaidStatus;
-    current.paidAt = newPaidStatus ? now : null;
-    current.updatedAt = now;
-
-    state.expenses[index] = current;
-    saveDatabase(state);
-    return current;
+  setPaid(id,isPaid) {
+    const s=get();let item=s.transactions.find(t=>t.id===id);
+    if(!item)item=s.purchases.flatMap(p=>p.installments).find(i=>i.id===id);
+    if(!item)throw new Error('Movimiento no encontrado');
+    if(typeof isPaid!=='boolean')throw new Error('Estado inválido');
+    item.isPaid=isPaid;item.paidAt=isPaid?new Date().toISOString():null;
+    persist();return item;
   },
-
-  deleteExpense(id) {
-    const state = loadDatabase();
-    const index = state.expenses.findIndex(e => e.id === id);
-    if (index === -1) return false;
-    state.expenses.splice(index, 1);
-    saveDatabase(state);
-    return true;
+  remove(id) {
+    const s=get();
+    let i=s.transactions.findIndex(x=>x.id===id);
+    if(i>=0){s.transactions.splice(i,1);persist();return true;}
+    i=s.purchases.findIndex(x=>x.id===id);
+    if(i>=0){s.purchases.splice(i,1);persist();return true;}
+    throw new Error('Movimiento no encontrado');
   },
-
-  getIncomes({ month, category, search } = {}) {
-    const state = loadDatabase();
-    let list = [...state.incomes];
-
-    if (month) {
-      list = list.filter(inc => (inc.date || '').startsWith(month));
-    }
-
-    if (category && category !== 'all') {
-      list = list.filter(inc => inc.category === category);
-    }
-
-    if (search && search.trim()) {
-      const q = search.trim().toLowerCase();
-      list = list.filter(inc =>
-        (inc.title || '').toLowerCase().includes(q) ||
-        (inc.category || '').toLowerCase().includes(q)
-      );
-    }
-
-    list.sort((a, b) => (b.date || '').localeCompare(a.date || '') || b.createdAt.localeCompare(a.createdAt));
-    return list;
-  },
-
-  getIncomeById(id) {
-    const state = loadDatabase();
-    return state.incomes.find(i => i.id === id) || null;
-  },
-
-  addIncome(data) {
-    const state = loadDatabase();
-    const amount = Number.parseFloat(data.amount);
-    if (Number.isNaN(amount) || amount <= 0) {
-      throw new Error('El monto del ingreso debe ser un número positivo mayor a 0');
-    }
-
-    const now = new Date().toISOString();
-    const income = {
-      id: generateId(),
-      date: data.date || now.split('T')[0],
-      title: (data.title || 'Ingreso extra').trim(),
-      amount: Math.round(amount * 100) / 100,
-      category: data.category || 'Extra',
-      notes: (data.notes || '').trim(),
-      createdAt: now,
-      updatedAt: now
-    };
-
-    state.incomes.unshift(income);
-    saveDatabase(state);
-    return income;
-  },
-
-  updateIncome(id, data) {
-    const state = loadDatabase();
-    const index = state.incomes.findIndex(i => i.id === id);
-    if (index === -1) return null;
-
-    const current = state.incomes[index];
-    const amount = data.amount !== undefined ? Number.parseFloat(data.amount) : current.amount;
-    if (Number.isNaN(amount) || amount <= 0) {
-      throw new Error('El monto del ingreso debe ser un número positivo mayor a 0');
-    }
-
-    const updated = {
-      ...current,
-      date: data.date !== undefined ? data.date : current.date,
-      title: data.title !== undefined ? data.title.trim() : current.title,
-      amount: Math.round(amount * 100) / 100,
-      category: data.category !== undefined ? data.category : current.category,
-      notes: data.notes !== undefined ? data.notes.trim() : current.notes,
-      updatedAt: new Date().toISOString()
-    };
-
-    state.incomes[index] = updated;
-    saveDatabase(state);
-    return updated;
-  },
-
-  deleteIncome(id) {
-    const state = loadDatabase();
-    const index = state.incomes.findIndex(i => i.id === id);
-    if (index === -1) return false;
-    state.incomes.splice(index, 1);
-    saveDatabase(state);
-    return true;
-  },
-
-  getSummary(targetMonth) {
-    const state = loadDatabase();
-    const now = new Date();
-    const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-    const month = targetMonth || currentMonthStr;
-
-    const [yearNum, monthNum] = month.split('-').map(Number);
-    const daysInMonth = new Date(yearNum, monthNum, 0).getDate();
-
-    let daysRemaining = 0;
-    if (month === currentMonthStr) {
-      daysRemaining = Math.max(1, daysInMonth - now.getDate() + 1);
-    } else if (month > currentMonthStr) {
-      daysRemaining = daysInMonth;
-    } else {
-      daysRemaining = 0;
-    }
-
-    const salary = state.settings.salary || 0;
-
-    // Extra incomes for this month
-    const monthIncomes = state.incomes.filter(inc => (inc.date || '').startsWith(month));
-    const extraIncomesTotal = monthIncomes.reduce((acc, inc) => acc + (inc.amount || 0), 0);
-    const totalIncome = salary + extraIncomesTotal;
-
-    // Expenses for this month
-    const monthExpenses = state.expenses.filter(exp => doesFixedExpenseApplyToMonth(exp, month));
-
-    let fixedExpensesTotal = 0;
-    let variableExpensesTotal = 0;
-    let totalPaid = 0;
-    let totalPending = 0;
-    let paidCount = 0;
-    let pendingCount = 0;
-
-    const categoryTotals = {};
-    const pendingList = [];
-    const overdueList = [];
-    const dueSoonList = [];
-
-    // Calculate dates for dueSoon (within next 3 days)
-    const in3Days = new Date(now);
-    in3Days.setDate(in3Days.getDate() + 3);
-    const in3DaysStr = in3Days.toISOString().split('T')[0];
-
-    for (const exp of monthExpenses) {
-      const amt = exp.amount || 0;
-      if (exp.isFixed) {
-        fixedExpensesTotal += amt;
-      } else {
-        variableExpensesTotal += amt;
-      }
-
-      if (exp.isPaid) {
-        totalPaid += amt;
-        paidCount++;
-      } else {
-        totalPending += amt;
-        pendingCount++;
-        pendingList.push(exp);
-
-        const dDate = exp.dueDate || exp.date || todayStr;
-        if (dDate < todayStr) {
-          overdueList.push(exp);
-        } else if (dDate <= in3DaysStr) {
-          dueSoonList.push(exp);
-        }
-      }
-
-      const cat = exp.category || 'Otros';
-      categoryTotals[cat] = (categoryTotals[cat] || 0) + amt;
-    }
-
-    const totalExpenses = fixedExpensesTotal + variableExpensesTotal;
-    const balance = totalIncome - totalExpenses; // Saldo neto final
-    const cashOnHand = totalIncome - totalPaid; // Dinero líquido disponible actualmente
-
-    const spentPercentage = totalIncome > 0 ? Math.min(100, Math.round((totalExpenses / totalIncome) * 100)) : (totalExpenses > 0 ? 100 : 0);
-    const paidPercentage = totalExpenses > 0 ? Math.round((totalPaid / totalExpenses) * 100) : 100;
-    const savingsRate = totalIncome > 0 ? Math.max(0, Math.round((balance / totalIncome) * 100)) : 0;
-
-    const dailyBudget = daysRemaining > 0 && balance > 0 ? Math.round((balance / daysRemaining) * 100) / 100 : 0;
-
-    // Format categories
-    const categoriesList = Object.entries(categoryTotals)
-      .map(([name, total]) => ({
-        name,
-        total: Math.round(total * 100) / 100,
-        percentage: totalExpenses > 0 ? Math.round((total / totalExpenses) * 100) : 0
-      }))
-      .sort((a, b) => b.total - a.total);
-
-    // ==========================================
-    // ASISTENTE FINANCIERO INTELIGENTE (INSIGHTS)
-    // ==========================================
-    const notifications = [];
-    let assistantHeadline = '';
-    let assistantDetail = '';
-    let assistantTone = 'positive'; // positive, warning, danger, neutral
-
-    if (totalIncome === 0 && totalExpenses === 0) {
-      assistantTone = 'neutral';
-      assistantHeadline = 'Comenzá configurando tu sueldo e ingresos';
-      assistantDetail = 'Definí tu ingreso base mensual para que pueda calcularte cuánto tenés libre y proyectar tus compromisos.';
-    } else if (balance < 0) {
-      assistantTone = 'danger';
-      assistantHeadline = `Atención: Tenés un déficit proyectado de $${Math.abs(balance).toLocaleString('es-AR')}`;
-      assistantDetail = `Tus gastos totales ($${totalExpenses.toLocaleString('es-AR')}) superan tus ingresos ($${totalIncome.toLocaleString('es-AR')}). Revisá los gastos variables antes de asumir nuevos pagos.`;
-    } else if (cashOnHand < totalPending) {
-      assistantTone = 'warning';
-      assistantHeadline = `Cuidado: Te faltan $${(totalPending - cashOnHand).toLocaleString('es-AR')} para cubrir los compromisos pendientes`;
-      assistantDetail = `Tenés $${totalPending.toLocaleString('es-AR')} pendientes en ${pendingCount} pagos y tu saldo actual en mano es de $${cashOnHand.toLocaleString('es-AR')}. Necesitás ingresar fondos o postergar pagos.`;
-    } else if (totalPending === 0 && totalExpenses > 0) {
-      assistantTone = 'positive';
-      assistantHeadline = '¡100% al día! No tenés cuentas pendientes este mes';
-      assistantDetail = `Ya pagaste todos tus compromisos del mes ($${totalPaid.toLocaleString('es-AR')}). Tu saldo neto libre es de $${balance.toLocaleString('es-AR')} ($${dailyBudget.toLocaleString('es-AR')}/día).`;
-    } else {
-      assistantTone = 'positive';
-      assistantHeadline = `Tenés $${totalPending.toLocaleString('es-AR')} por pagar y te van a sobrar $${balance.toLocaleString('es-AR')} libres`;
-      assistantDetail = `De tus $${totalIncome.toLocaleString('es-AR')} de ingresos, ya pagaste $${totalPaid.toLocaleString('es-AR')}. Tenés ${pendingCount} ${pendingCount === 1 ? 'pago pendiente' : 'pagos pendientes'}. Al liquidarlos, te quedarán $${dailyBudget.toLocaleString('es-AR')} por día para el resto del mes.`;
-    }
-
-    // Generate notifications
-    if (overdueList.length > 0) {
-      notifications.push({
-        id: 'overdue',
-        type: 'danger',
-        title: `${overdueList.length} ${overdueList.length === 1 ? 'cuenta vencida' : 'cuentas vencidas'}`,
-        message: `Tenés pagos con fecha vencida: ${overdueList.map(o => `${o.title} ($${o.amount.toLocaleString('es-AR')})`).join(', ')}.`
-      });
-    }
-
-    if (dueSoonList.length > 0) {
-      notifications.push({
-        id: 'due_soon',
-        type: 'warning',
-        title: `${dueSoonList.length} ${dueSoonList.length === 1 ? 'pago próximo a vencer' : 'pagos próximos a vencer'}`,
-        message: `Por vencer en los próximos días: ${dueSoonList.map(d => `${d.title} ($${d.amount.toLocaleString('es-AR')})`).join(', ')}.`
-      });
-    }
-
-    if (totalPending > 0) {
-      notifications.push({
-        id: 'pending_summary',
-        type: 'info',
-        title: `${pendingCount} gastos pendientes de pago`,
-        message: `Total a pagar pendiente: $${totalPending.toLocaleString('es-AR')}. Ya cancelaste el ${paidPercentage}% del total.`
-      });
-    }
-
-    return {
-      month,
-      currency: state.settings.currency || '$',
-      currencyCode: state.settings.currencyCode || 'ARS',
-      salary,
-      extraIncomesTotal: Math.round(extraIncomesTotal * 100) / 100,
-      totalIncome: Math.round(totalIncome * 100) / 100,
-      fixedExpensesTotal: Math.round(fixedExpensesTotal * 100) / 100,
-      variableExpensesTotal: Math.round(variableExpensesTotal * 100) / 100,
-      totalExpenses: Math.round(totalExpenses * 100) / 100,
-      totalPaid: Math.round(totalPaid * 100) / 100,
-      totalPending: Math.round(totalPending * 100) / 100,
-      paidCount,
-      pendingCount,
-      paidPercentage,
-      cashOnHand: Math.round(cashOnHand * 100) / 100,
-      balance: Math.round(balance * 100) / 100,
-      spentPercentage,
-      savingsRate,
-      daysInMonth,
-      daysRemaining,
-      dailyBudget,
-      categories: categoriesList,
-      totalExpenseCount: monthExpenses.length,
-      totalIncomeCount: monthIncomes.length + (salary > 0 ? 1 : 0),
-      assistant: {
-        tone: assistantTone,
-        headline: assistantHeadline,
-        detail: assistantDetail,
-        notifications,
-        overdueCount: overdueList.length,
-        dueSoonCount: dueSoonList.length
-      }
-    };
-  },
-
-  exportAll() {
-    return loadDatabase();
-  },
-
-  importAll(payload) {
-    if (!payload || typeof payload !== 'object') {
-      throw new Error('Formato de datos no válido');
-    }
-    const state = {
-      settings: { ...DEFAULT_STATE.settings, ...(payload.settings || {}) },
-      expenses: Array.isArray(payload.expenses) ? payload.expenses : [],
-      incomes: Array.isArray(payload.incomes) ? payload.incomes : []
-    };
-    saveDatabase(state);
-    return state;
-  }
+  export() { return get(); }
 };
