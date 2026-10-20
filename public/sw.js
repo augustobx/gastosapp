@@ -1,6 +1,6 @@
 // Solo assets estáticos. Nunca cachear datos financieros ni respuestas API.
-const CACHE='gastosapp-v18';
-const CORE=['/','/index.html','/app.css?v=18','/app.js?v=18','/chat.js?v=18','/diagnostics.js?v=18','/providers.js?v=18','/ai-tasks.js?v=18','/voice-errors.js?v=18','/speech-request.js?v=18','/ai-usage.js?v=18','/express.js?v=18','/express-parse.js?v=18','/installments.js?v=18','/loan-edit.js?v=18','/manifest.json','/icons/icon.svg'];
+const CACHE='gastosapp-v19';
+const CORE=['/','/index.html','/app.css?v=19','/app.js?v=19','/chat.js?v=19','/diagnostics.js?v=19','/providers.js?v=19','/ai-tasks.js?v=19','/voice-errors.js?v=19','/speech-request.js?v=19','/ai-usage.js?v=19','/express.js?v=19','/express-parse.js?v=19','/installments.js?v=19','/loan-edit.js?v=19','/movement-sort.js?v=19','/movement-table.js?v=19','/manifest.json','/icons/icon.svg'];
 self.addEventListener('install',event=>{
   event.waitUntil(caches.open(CACHE).then(c=>c.addAll(CORE)));
   self.skipWaiting();

@@ -10,8 +10,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/app.css?v=18">
-  <script defer type="module" src="/app.js?v=18"></script>
+  <link rel="stylesheet" href="/app.css?v=19">
+  <script defer type="module" src="/app.js?v=19"></script>
   <title>GastosApp · Mis finanzas</title>
 </head>
 <body>
@@ -71,7 +71,18 @@
           </div>
         </section>
         <section class="view" id="view-movements"><div class="section-toolbar"><div><h2>Todos tus movimientos</h2><p>Gastos, ingresos y cuotas en un solo historial.</p></div><button class="btn btn-primary open-movement">+ Agregar</button></div>
-          <div class="filters"><input id="movementSearch" type="search" placeholder="⌕  Buscar por concepto, categoría o medio de pago" aria-label="Buscar movimientos"><select id="typeFilter" aria-label="Filtrar tipo"><option value="all">Todos los movimientos</option><option value="expense">Gastos</option><option value="income">Ingresos</option><option value="pending">Pendientes</option></select></div>
+          <div class="filters"><input id="movementSearch" type="search" placeholder="⌕  Buscar por concepto, categoría o medio de pago" aria-label="Buscar movimientos"><select id="typeFilter" aria-label="Filtrar tipo"><option value="all">Todos los movimientos</option><option value="expense">Gastos</option><option value="income">Ingresos</option><option value="pending">Pendientes</option></select>
+          <label class="movement-toolbar-label">Ordenar por <select id="movementSort" aria-label="Ordenar movimientos"><option value="date">Fecha</option><option value="title">Nombre</option><option value="amount">Importe</option><option value="type">Tipo</option><option value="category">Categoría</option><option value="account">Medio</option><option value="status">Estado</option></select></label>
+          <button type="button" class="btn btn-muted" id="movementDirection" aria-label="Cambiar orden">↓ Mayor a menor</button>
+          <div class="movement-view-switch" role="group" aria-label="Vista de movimientos">
+          <button type="button" id="movementListButton" class="btn btn-muted" aria-pressed="true">☷ Lista</button>
+          <button type="button" id="movementTableButton" class="btn btn-muted" aria-pressed="false">▦ Tabla</button></div></div>
+          <div id="movementBulk" class="movement-bulk hidden" role="region" aria-label="Acciones sobre movimientos seleccionados">
+            <strong id="movementBulkCount">0 seleccionados</strong>
+            <button type="button" id="movementBulkPaid" class="btn btn-primary">Marcar pagados / cobrados</button>
+            <button type="button" id="movementBulkPending" class="btn btn-muted">Marcar pendientes</button>
+            <button type="button" id="movementBulkClear" class="btn btn-quiet">Limpiar selección</button>
+          </div>
           <div class="panel table-panel"><div id="allMovements" class="transaction-list full"></div></div>
         </section>
         <section class="view" id="view-cards"><div class="section-toolbar"><div><h2>Medios de pago</h2><p>Organizá tu efectivo, billeteras y tarjetas.</p></div><button id="newAccount" class="btn btn-primary">+ Agregar medio</button></div>
@@ -81,7 +92,7 @@
           <div class="reports-grid"><article class="panel report-highlight"><small>BALANCE DEL MES</small><strong id="reportBalance">$0</strong><p id="reportInsight">Balance proyectado</p></article><article class="panel"><h3>Distribución por categoría</h3><div id="reportCategories" class="category-chart"></div></article><article class="panel"><h3>Estado de tus gastos</h3><div id="paidSplit" class="report-split"></div></article></div>
         </section>
         <section class="view" id="view-settings"><div class="section-toolbar"><div><h2>Configuración</h2><p>Personalizá tu control financiero.</p></div></div>
-          <div class="settings-grid"><form id="salaryForm" class="panel settings-panel"><h3>Tu ingreso mensual</h3><p>El sueldo base se proyecta automáticamente cada mes.</p><label>Sueldo mensual en ARS<input id="salaryInput" type="number" min="0" step="0.01" required></label><button class="btn btn-primary" type="submit">Guardar sueldo</button></form>
+          <div class="settings-grid"><form id="salaryForm" class="panel settings-panel"><h3>Tu ingreso mensual</h3><p>El sueldo base se proyecta automáticamente cada mes. Si registrás ese mismo sueldo como «ingreso fijo», poné aquí $0 para no contarlo dos veces.</p><label>Sueldo mensual en ARS<input id="salaryInput" type="number" min="0" step="0.01" required></label><button class="btn btn-primary" type="submit">Guardar sueldo</button></form>
             <div class="panel settings-panel"><h3>Privacidad y seguridad</h3><p>Tu cuenta está protegida por una contraseña. Los movimientos se confirman antes de guardar, salvo que actives voluntariamente el guardado exprés para gastos simples.</p><button class="btn btn-muted" id="exportBtn">↓ Exportar respaldo JSON</button><button class="btn btn-quiet" id="logoutBtn">Cerrar sesión</button></div>
           <div class="panel settings-panel express-settings">
             <h3>⚡ Registro Express</h3>
@@ -200,7 +211,8 @@
       </div>
     </div>
     <label>Notas (opcional)<textarea id="txNotes" rows="2" maxlength="450" placeholder="Algo más sobre este movimiento..."></textarea></label>
-    <label class="checkbox-field" id="recurringField"><input id="txRecurring" type="checkbox"><span>Repetir todos los meses (gasto fijo)</span></label>
+    <label class="checkbox-field" id="recurringField"><input id="txRecurring" type="checkbox"><span id="txRecurringLabel">Repetir todos los meses (gasto fijo)</span></label>
+    <p id="recurringIncomeNote" class="ai-fineprint hidden">Este ingreso se proyecta todos los meses y podrás marcarlo como cobrado. Si es tu mismo sueldo, revisá el «Sueldo mensual» de Configuración para no contarlo dos veces.</p>
     <div class="form-hint" id="installmentHint">Elegí el tipo de financiación para programar las cuotas.</div>
     <div class="dialog-actions"><button type="button" class="btn btn-muted close-dialog">Cancelar</button><button class="btn btn-primary" type="submit">Guardar movimiento</button></div>
   </form></dialog>

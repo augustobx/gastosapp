@@ -1,7 +1,7 @@
-import {getNaturalVoice} from './speech-request.js?v=18';
-import {voiceFailure,spokenExcerpt} from './voice-errors.js?v=18';
-import {waitTask} from './ai-tasks.js?v=18';
-import {providerFor,voiceFor} from './providers.js?v=18';
+import {getNaturalVoice} from './speech-request.js?v=19';
+import {voiceFailure,spokenExcerpt} from './voice-errors.js?v=19';
+import {waitTask} from './ai-tasks.js?v=19';
+import {providerFor,voiceFor} from './providers.js?v=19';
 // Asistente conversacional: IA optativa para comprensión, voz y transcripción.
 // Ningún movimiento se guarda hasta confirmar toda la tanda.
 export function setupChat({request,refresh,getAccounts,fmt,dateLabel,hasAI,openQuick,openDiagnostics}){
@@ -170,8 +170,8 @@ export function setupChat({request,refresh,getAccounts,fmt,dateLabel,hasAI,openQ
    if(!Number.isInteger(count)||count<1||count>60)return say('Elegí entre una y sesenta cuotas.');
    if(type==='expense'&&count>1&&a?.kind!=='credit'&&!dueDate)
      return say('Para este préstamo indicá el vencimiento de la primera cuota. No necesitás tarjeta de crédito. El importe es el de cada cuota.');
-   if(type==='income'&&(dueDate||recurring||count>1))return say('Los ingresos no admiten vencimientos, cuotas ni gastos fijos.');
-   if(recurring&&(count>1||a?.kind==='credit'))return say('El gasto fijo no se puede combinar con una compra financiada.');
+   if(type==='income'&&(dueDate||count>1))return say('Los ingresos fijos se repiten mensualmente, pero no admiten cuotas ni vencimiento independiente.');
+   if(recurring&&(count>1||a?.kind==='credit'))return say('Un movimiento fijo no se puede combinar con una compra financiada.');
    const before=chat.pending||chat.items[chat.editIndex]||{};
    const d={...before,type,title:$('chatEditTitle').value.trim(),amount:Math.round(amount*100)/100,
      date,dueDate:type==='income'?null:dueDate,category:$('chatEditCategory').value,
