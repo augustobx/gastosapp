@@ -1,4 +1,5 @@
-import {providerFor,voiceFor} from './providers.js?v=10';
+import {waitTask} from './ai-tasks.js?v=11';
+import {providerFor,voiceFor} from './providers.js?v=11';
 // Asistente conversacional: IA optativa para comprensión, voz y transcripción.
 // Ningún movimiento se guarda hasta confirmar toda la tanda.
 export function setupChat({request,refresh,getAccounts,fmt,dateLabel,hasAI,openQuick,openDiagnostics}){
@@ -207,7 +208,8 @@ export function setupChat({request,refresh,getAccounts,fmt,dateLabel,hasAI,openQ
    chat.busy=true;status('La IA está interpretando lo que dijiste...');
    try{
      const query=chat.unresolved?'Mensaje anterior pendiente: '+chat.unresolved+'. Aclaración: '+text:text;
-     const r=await request('/api/chat/turn','POST',{text:query,phase:chat.phase,items:chat.items,provider:providerFor('nlu')});
+     const pending=await request('/api/chat/turn','POST',{text:query,phase:chat.phase,items:chat.items,provider:providerFor('nlu')});
+     const r=await waitTask(pending,u=>request(u),status);
      const action=r.action;
      if(action==='add'){
        chat.unresolved=null;chat.items.push(...r.items);chat.phase='collect';renderReview();
@@ -331,7 +333,8 @@ export function setupChat({request,refresh,getAccounts,fmt,dateLabel,hasAI,openQ
          const resp=await fetch('/api/voice/transcribe',{method:'POST',credentials:'same-origin',
            headers:{'Content-Type':rawType,'X-AI-Provider':providerFor('stt')},body:blob});
          if(!resp.ok)throw new Error(await audioProblem(resp,'Transcripción'));
-         const data=await resp.json();
+         const original=await resp.json();
+         const data={data:await waitTask(original.data,u=>request(u),status)};
          if(!data.data?.text)throw new Error('La API respondió sin texto. Revisá el micrófono y volvé a grabar.');
          clearAlert();status('Transcripción HTTP '+(data.data.httpStatus||resp.status)+
            ' · '+data.data.model+' · '+data.data.text);

@@ -31,6 +31,7 @@ test('Gemini structured JSON permite separar tres gastos en una frase',async()=>
  assert.equal(req.opts.headers['x-goog-api-key'],'TEST-KEY');
  const b=JSON.parse(req.opts.body);
  assert.equal(b.generationConfig.responseFormat.text.mimeType,'APPLICATION_JSON');
+ assert.equal(b.generationConfig.thinkingConfig.thinkingLevel,'low');
  assert.equal(b.generationConfig.responseFormat.text.schema.type,'object');
  assert.ok(!JSON.stringify(req).includes('Bearer TEST-KEY'));
 });
@@ -39,6 +40,7 @@ test('Gemini STT usa audio inline con mimeType real y base64',async()=>{
  const mock=async(_url,opts)=>{
   const b=JSON.parse(opts.body),part=b.contents[0].parts[1].inlineData;
   assert.equal(part.mimeType,'audio/wav');
+  assert.equal(b.generationConfig.thinkingConfig.thinkingLevel,'low');
   assert.deepEqual(Buffer.from(part.data,'base64'),pcm);
   return ok(output('980 mil a Juana y 160 mil a Personal'));
  };

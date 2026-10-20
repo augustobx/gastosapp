@@ -8,6 +8,7 @@ import { interpret, isoDay, monthOf } from './lib/engine.js';
 import { aiChatTurn } from './lib/ai-chat.js';
 import { VOICES,callOpenAI,makeSpeechBody,publicError,diagnostics,networkDiagnostics } from './lib/openai-health.js';
 import { GEMINI_MODELS,GEMINI_VOICES,geminiChatTurn,geminiTranscribe,geminiSpeech,geminiNetwork,geminiDiagnostic } from './lib/gemini.js';
+import {makeJobs} from './lib/ai-jobs.js';
 
 const port=Number(process.env.PORT||3000);
 const password=process.env.APP_PASSWORD||'';
@@ -21,6 +22,7 @@ app.set('trust proxy',1);
 app.use(compression());
 app.use(express.json({limit:'128kb'}));
 const sessions=new Map();
+const aiJobs=makeJobs();
 const attempts=new Map();
 const highCostAttempts=new Map();
 function limited(maxPerMinute){return (req,res,next)=>{
@@ -85,9 +87,12 @@ app.post('/api/logout',(req,res)=>{
 });
 app.use('/api',(req,res,next)=>auth(req)?next():res.status(401).json({error:'Sesión requerida'}));
 
+const jobOwner=req=>sha(cookies(req).gastos_session||'local-dev').toString('hex');
+const queueJob=(req,res,work)=>{res.status(202);return aiJobs.start(jobOwner(req),work);};
 const wrap=fn=>async(req,res)=>{try{const value=await fn(req,res);if(!res.headersSent)res.json({ok:true,data:value});}
   catch(e){const detail=publicError(e);console.error('API',req.path,detail.code,detail.upstreamStatus||'',detail.error);
     if(!res.headersSent)res.status(e.status||400).json(detail);}};
+app.get('/api/ai/tasks/:id',limited(50),wrap(req=>aiJobs.get(jobOwner(req),req.params.id)));
 app.get('/api/state',wrap(req=>store.snapshot(req.query.month||monthOf(isoDay(new Date())))));
 app.patch('/api/settings',wrap(req=>store.settings(req.body)));
 app.post('/api/accounts',wrap(req=>store.addAccount(req.body)));
@@ -144,7 +149,7 @@ app.post('/api/ai/diagnostics/:service',limited(4),wrap(async req=>{
       type==='stt'?(process.env.GEMINI_STT_MODEL||GEMINI_MODELS.stt):
       (process.env.GEMINI_TTS_MODEL||GEMINI_MODELS.tts);
     const voice=GEMINI_VOICES.includes(req.body?.voice)?req.body.voice:(process.env.GEMINI_TTS_VOICE||'Kore');
-    return geminiDiagnostic(type,{key:process.env.GEMINI_API_KEY,model,voice});
+    return queueJob(req,res,()=>geminiDiagnostic(type,{key:process.env.GEMINI_API_KEY,model,voice}));
   }
   const model=type==='nlu'?(process.env.OPENAI_NLU_MODEL||'gpt-4o-mini'):
     type==='stt'?(process.env.OPENAI_STT_MODEL||'gpt-4o-mini-transcribe'):
@@ -228,8 +233,8 @@ app.post('/api/chat/turn',limited(20),wrap(async req=>{
   const phase=['collect','confirm','edit'].includes(req.body?.phase)?req.body.phase:'collect';
   const provider=providerFrom(req.body?.provider);
   return provider==='gemini'?
-    geminiChatTurn({text:req.body?.text,items,accounts,phase,key:process.env.GEMINI_API_KEY,
-      model:process.env.GEMINI_NLU_MODEL||GEMINI_MODELS.nlu}):
+    queueJob(req,res,()=>geminiChatTurn({text:req.body?.text,items,accounts,phase,key:process.env.GEMINI_API_KEY,
+      model:process.env.GEMINI_NLU_MODEL||GEMINI_MODELS.nlu})):
     aiChatTurn({text:req.body?.text,items,accounts,phase,
       key:process.env.OPENAI_API_KEY,model:process.env.OPENAI_NLU_MODEL||'gpt-4o-mini'});
 
@@ -272,8 +277,8 @@ app.post('/api/voice/transcribe',limited(10),
     const ext=type==='audio/mp4'?'mp4':type==='audio/ogg'?'ogg':type==='audio/wav'||type==='audio/x-wav'?'wav':
       type==='audio/mpeg'?'mp3':'webm';
     if(provider==='gemini'){
-      return await geminiTranscribe({bytes:blob,mime:type,key:process.env.GEMINI_API_KEY,
-        model:process.env.GEMINI_STT_MODEL||GEMINI_MODELS.stt});
+      return queueJob(req,res,()=>geminiTranscribe({bytes:blob,mime:type,key:process.env.GEMINI_API_KEY,
+        model:process.env.GEMINI_STT_MODEL||GEMINI_MODELS.stt}));
     }
     const form=new FormData();
     form.set('file',new Blob([blob],{type:type||'audio/webm'}),'dictado.'+ext);
