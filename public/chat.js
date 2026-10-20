@@ -1,5 +1,6 @@
-import {waitTask} from './ai-tasks.js?v=12';
-import {providerFor,voiceFor} from './providers.js?v=12';
+import {voiceFailure,spokenExcerpt} from './voice-errors.js?v=13';
+import {waitTask} from './ai-tasks.js?v=13';
+import {providerFor,voiceFor} from './providers.js?v=13';
 // Asistente conversacional: IA optativa para comprensión, voz y transcripción.
 // Ningún movimiento se guarda hasta confirmar toda la tanda.
 export function setupChat({request,refresh,getAccounts,fmt,dateLabel,hasAI,openQuick,openDiagnostics}){
@@ -9,7 +10,7 @@ export function setupChat({request,refresh,getAccounts,fmt,dateLabel,hasAI,openQ
  const cats=['Comida','Servicios','Hogar','Transporte','Salud','Educación','Tecnología','Entretenimiento','Indumentaria','Deudas y préstamos','Otros','Extra','Sueldo','Ventas'];
  const dlg=$('chatDialog'),messages=$('chatMessages'),review=$('chatReview'),editor=$('chatEditor');
  const chat={items:[],pending:null,editIndex:null,returnPhase:'collect',phase:'collect',busy:false,
-   closed:true,speaker:null,voiceAbort:null,voiceUrl:null,voiceSeq:0,lastSpoken:'',unresolved:null,recognizer:null,recorder:null,stream:null,chunks:[],key:null,recordStarted:0};
+   closed:true,speaker:null,voiceAbort:null,voiceUrl:null,voiceSeq:0,lastSpoken:'',ttsSuspended:false,unresolved:null,recognizer:null,recorder:null,stream:null,chunks:[],key:null,recordStarted:0};
  const account=id=>getAccounts().find(a=>a.id===id);
  const welcome='Dale, decime el primer gasto o ingreso. Cuando termines, decí "nada más". Después los repasamos juntos.';
  const key=()=>Date.now().toString(36)+'-'+(crypto.randomUUID?.()||Math.random().toString(36).slice(2));
@@ -18,16 +19,11 @@ export function setupChat({request,refresh,getAccounts,fmt,dateLabel,hasAI,openQ
    messages.append(el);messages.scrollTop=messages.scrollHeight;
  }
  function status(value){$('chatStatus').textContent=value;}
- function clearAlert(){$('chatAlert').textContent='';$('chatAlert').classList.add('hidden');$('chatOpenDiagnostics').classList.add('hidden');}
+ function clearAlert(){if(chat.ttsSuspended)return;$('chatAlert').textContent='';$('chatAlert').classList.add('hidden');$('chatOpenDiagnostics').classList.add('hidden');}
  function alertIssue(message){
    $('chatAlert').textContent=message;$('chatAlert').classList.remove('hidden');$('chatOpenDiagnostics').classList.remove('hidden');status('Hay un problema con el audio. Revisá el aviso.');
  }
- async function audioProblem(response,operation){
-   let info={};try{info=await response.json();}catch{}
-   const who=info.upstreamStatus?(info.provider==='gemini'?'Gemini HTTP ':'OpenAI HTTP ')+info.upstreamStatus:'GastosApp HTTP '+response.status;
-   return operation+': '+who+' · '+(info.code||'error')+' · '+(info.error||'Sin detalle del servidor')+
-     (info.hint?' · SOLUCIÓN: '+info.hint:'')+(info.requestId?' · ID OpenAI: '+info.requestId:'');
- }
+ async function audioProblem(response,operation){return (await voiceFailure(response,operation)).message;}
  function stopVoice(){
    chat.voiceSeq++;
    chat.voiceAbort?.abort();chat.voiceAbort=null;
@@ -50,12 +46,7 @@ export function setupChat({request,refresh,getAccounts,fmt,dateLabel,hasAI,openQ
    utterance.onend=()=>{if(chat.speaker===utterance){chat.speaker=null;listenAfterSpeech(seq);}};
    try{window.speechSynthesis.speak(utterance);}catch(e){alertIssue('No se pudo usar la voz del navegador: '+e.message);}
  }
- function voiceText(message){
-   if(message.length<=620)return message;
-   // No cortar un número, fecha o concepto a mitad al sintetizar.
-   const cut=message.slice(0,500);const end=Math.max(cut.lastIndexOf('. '),cut.lastIndexOf(' ¿'));
-   return (end>180?cut.slice(0,end+1):cut)+' El detalle completo quedó escrito en el chat.';
- }
+ function voiceText(message){return spokenExcerpt(message,200);}
  function preferredVoice(){return voiceFor(providerFor('tts'));}
  function say(message,{bubbleOnly=false}={}){
    if(!bubbleOnly)bubble('assistant',message);
@@ -66,6 +57,7 @@ export function setupChat({request,refresh,getAccounts,fmt,dateLabel,hasAI,openQ
    if(!hasAI()||!$('chatNaturalVoice').checked){
      browserVoice(message,seq);return;
    }
+   if(chat.ttsSuspended){status('Voz natural pausada por error anterior. Podés seguir escribiendo o volver a intentar manualmente.');return;}
    const abort=new AbortController();chat.voiceAbort=abort;
    void(async()=>{
      try{
@@ -73,7 +65,9 @@ export function setupChat({request,refresh,getAccounts,fmt,dateLabel,hasAI,openQ
        const response=await fetch('/api/chat/speech',{method:'POST',credentials:'same-origin',
          headers:{'Content-Type':'application/json'},
          body:JSON.stringify({text:voiceText(message),voice:preferredVoice(),provider:providerFor('tts')}),signal:abort.signal});
-       if(!response.ok)throw new Error(await audioProblem(response,'Voz natural'));
+       if(!response.ok)throw await voiceFailure(response,'Voz natural');
+       const type=String(response.headers.get('Content-Type')||'').toLowerCase();
+       if(!type.startsWith('audio/'))throw new Error('La API respondió HTTP 200 con '+(type||'sin Content-Type')+' en lugar de audio.');
        const audioBlob=await response.blob();
        if(audioBlob.size<100)throw new Error('La API devolvió HTTP 200 pero el audio está vacío.');
        if(abort.signal.aborted||seq!==chat.voiceSeq||chat.closed)return;
@@ -82,15 +76,17 @@ export function setupChat({request,refresh,getAccounts,fmt,dateLabel,hasAI,openQ
        audio.onended=()=>{if(chat.speaker===audio){chat.speaker=null;
          URL.revokeObjectURL(url);chat.voiceUrl=null;listenAfterSpeech(seq);}};
        audio.onerror=()=>{if(seq===chat.voiceSeq){
-         alertIssue('La API generó voz, pero este navegador no pudo decodificar el MP3. Abrí Configuración → Escuchar voz real para probar el reproductor.');}};
-       try{await audio.play();clearAlert();status('Voz natural en reproducción.');}
+         chat.ttsSuspended=true;
+         alertIssue('No pude reproducir el audio '+type+'. Probá el reproductor de Configuración. La voz quedó pausada hasta que elijas reintentar.');}};
+       try{await audio.play();chat.ttsSuspended=false;clearAlert();status('Voz natural en reproducción.');}
        catch(e){
          if(e.name==='NotAllowedError')alertIssue('El navegador bloqueó la reproducción automática. Tocá «Volver a escuchar» para iniciar el audio con una acción tuya. No usé la voz robótica.');
          else alertIssue('No pude reproducir el MP3: '+e.message+'. Probá el reproductor de muestra en Configuración.');
        }
      }catch(error){
        if(error.name==='AbortError'||seq!==chat.voiceSeq||chat.closed)return;
-       alertIssue(error.message+' · Configuración → Conexión con OpenAI → Probar voz natural. La app no cambiará a la voz robótica sin avisar.');
+       chat.ttsSuspended=true;
+       alertIssue(error.message+' · Se pausó la voz para evitar intentos repetidos. Tocá «Volver a escuchar» para reintentar, o probá la voz desde Configuración → OpenAI y Google Gemini.');
      }finally{if(chat.voiceAbort===abort)chat.voiceAbort=null;}
    })();
  }
@@ -382,13 +378,15 @@ export function setupChat({request,refresh,getAccounts,fmt,dateLabel,hasAI,openQ
  $('chatOpenDiagnostics').addEventListener('click',()=>{close();openDiagnostics();});
  $('chatReplayVoice').addEventListener('click',()=>{
    if(!chat.lastSpoken)return alertIssue('Todavía no hay ningún mensaje para reproducir.');
-   if(chat.speaker instanceof HTMLAudioElement && chat.speaker.src){
+   const wasSuspended=chat.ttsSuspended;
+   chat.ttsSuspended=false;clearAlert();
+   if(!wasSuspended&&chat.speaker instanceof HTMLAudioElement && chat.speaker.src){
      void chat.speaker.play().then(()=>{clearAlert();status('Reproduciendo voz natural.');})
        .catch(e=>alertIssue('No se pudo reproducir el audio: '+e.message));
    }else say(chat.lastSpoken,{bubbleOnly:true});
  });
- $('chatSpeak').addEventListener('change',()=>{if(!$('chatSpeak').checked)stopVoice();});
- $('chatNaturalVoice').addEventListener('change',()=>stopVoice());
+ $('chatSpeak').addEventListener('change',()=>{if(!$('chatSpeak').checked)stopVoice();else{chat.ttsSuspended=false;clearAlert();}});
+ $('chatNaturalVoice').addEventListener('change',()=>{stopVoice();chat.ttsSuspended=false;clearAlert();});
  $('chatHandsFree').addEventListener('change',()=>{
    if($('chatHandsFree').checked&&!(window.SpeechRecognition||window.webkitSpeechRecognition)){
      $('chatHandsFree').checked=false;

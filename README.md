@@ -179,3 +179,13 @@ Los modelos estables alternativos documentados son gemini-3.6-flash y gemini-3.5
 Esas alternativas NO se activan automáticamente, para no generar consumos inesperados. Los tests simulan errores de Google sin usar la clave real ni gastar crédito. Las pruebas reales se hacen desde el servidor del usuario.
 
 Documentación de modelos: https://ai.google.dev/gemini-api/docs/generate-content/whats-new-gemini-3.6 , https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash , https://ai.google.dev/gemini-api/docs/generate-content/structured-output , https://ai.google.dev/gemini-api/docs/generate-content/audio .
+
+## Corrección de errores de voz natural (PWA v13)
+
+- Un HTTP 502 de un intermediario Cloudflare/Nginx suele devolver HTML y no JSON. Ahora la interfaz lee Content-Type, comprueba si la respuesta provino de GastosApp y presenta la causa visible y el HTTP real; no vuelve a mostrar solamente 'Sin detalle del servidor'. Si Express entrega JSON, el aviso conserva proveedor, código y solución.
+- Después de una falla de síntesis se suspenden los intentos automáticos de voz en el chat (texto y registro siguen funcionando). El usuario puede reintentar con 'Volver a escuchar' o reactivar la voz. No hay cambio silencioso a speechSynthesis.
+- El chat sintetiza un extracto de hasta ~200 caracteres; el detalle financiero completo se conserva en pantalla, para evitar generar WAV largos y latencia innecesaria. La voz Gemini devuelve WAV, OpenAI MP3.
+- Logs de TTS: provider, model, status, code, longitud de texto y mensaje, sin mostrar el texto financiero ni las claves.
+- Las pruebas cubren Cloudflare 502 HTML, 503 JSON de Google, texto corto y respuesta WAV del endpoint autenticado. CI ejecuta chequeo de sintaxis para los nuevos módulos.
+
+Si persiste el problema: ejecutar en Donweb `docker logs --tail 60 gastosapp-web` justo despues del error, sin compartir secretos; inspeccionar registros TTS y luego proxy si la respuesta es HTML.
