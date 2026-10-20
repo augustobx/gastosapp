@@ -88,6 +88,7 @@ app.post('/api/accounts',wrap(req=>store.addAccount(req.body)));
 app.patch('/api/accounts/:id',wrap(req=>store.editAccount(req.params.id,req.body)));
 app.delete('/api/accounts/:id',wrap(req=>store.deleteAccount(req.params.id)));
 app.post('/api/transactions',wrap(req=>store.add(req.body)));
+app.post('/api/transactions/batch',wrap(req=>store.addBatch(req.body.transactions,req.body.requestId)));
 app.patch('/api/transactions/:id',wrap(req=>store.editTransaction(req.params.id,req.body)));
 app.patch('/api/paid/:id',wrap(req=>store.setPaid(req.params.id,req.body.isPaid)));
 app.delete('/api/transactions/:id',wrap(req=>store.remove(req.params.id)));

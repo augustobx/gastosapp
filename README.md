@@ -76,3 +76,15 @@ Endpoints principales: GET /api/state?month=YYYY-MM; POST /api/transactions; PAT
 - Frases como «890 000 a Juanma para cancelar el crédito a fin de mes» se interpretan como $890.000, categoría Deudas y préstamos, vencimiento de fin de mes y pendiente.
 - «Crédito» en «cancelar el crédito» describe una deuda, no un medio de pago. No se crea una compra financiada en tarjeta salvo que se indique explícitamente.
 - Un medio de pago omitido puede quedar sin especificar y completarse después.
+
+## Asistente conversacional de gastos (modo voz y texto)
+
+1. Abrí el botón ✦ desde PC o celular. El asistente propone un diálogo por mensajes y, cuando el navegador lo admite, responde mediante Web Speech Synthesis en español.
+2. Podés decir: «tengo que cargar algunos gastos», «tengo que pagar a Juanma 890.000 para cancelar el crédito a fin de este mes», «gasté 15 lucas en el súper», etc.
+3. Cada movimiento queda **en una tanda sin guardar**. Decí «nada más» para que el asistente repita importes, vencimientos, estados y conceptos y pida confirmación.
+4. Antes de guardar podés editar o quitar movimientos, o agregar otros. Decí «sí, guardar» o tocá «Guardar tanda» para registrarlos todos.
+5. El servidor valida todos los movimientos y los persiste en una operación atómica; si falla algún dato no guarda parcialmente la tanda. Los reintentos con el mismo identificador evitan duplicaciones.
+6. El dictado usa SpeechRecognition del navegador si existe. El **modo manos libres** es opcional y depende de permisos y soporte del navegador. Como alternativa, con OPENAI_API_KEY puede usarse transcripción de audio remota.
+7. La voz de respuesta utiliza speechSynthesis del navegador sin costos de OpenAI. El reconocimiento/transcripción puede usar servicios del navegador, según cada implementación y sus políticas.
+8. Por privacidad, no se envían los gastos a un modelo de chat remoto salvo que marques la opción «Mejorar interpretación con IA paga». El intérprete local sigue disponible sin API Key.
+9. Los dos modos conviven: **Conversación** (tandas de varios movimientos) y **Modo rápido** (movimiento único).

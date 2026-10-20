@@ -91,4 +91,29 @@ test('HTTP: protección, medios, cuotas, recurrentes y confirmación de pago',as
  assert.equal(updated.code,200);
  const shifted=(await get('/api/state?month=2026-12','GET',null,cookie)).json.data;
  assert.ok(shifted.rows.some(row=>row.title==='Juanma'&&row.dueDate==='2026-12-29'));
+
+ // Chat: guardar toda la tanda de forma atómica y permitir reintentos sin duplicados.
+ const batch={requestId:'chat-suite-test-001',transactions:[
+   {type:'expense',title:'Juanma chat',amount:890000,date:'2026-10-19',
+     dueDate:'2026-10-31',isPaid:false,category:'Deudas y préstamos'},
+   {type:'expense',title:'Super chat',amount:15000,date:'2026-10-19',
+     isPaid:true,accountId:'mp',category:'Comida'}
+ ]};
+ const committed=await get('/api/transactions/batch','POST',batch,cookie);
+ assert.equal(committed.code,200);assert.equal(committed.json.data.count,2);
+ assert.equal(committed.json.data.alreadySaved,false);
+ const again=await get('/api/transactions/batch','POST',batch,cookie);
+ assert.equal(again.code,200);assert.equal(again.json.data.alreadySaved,true);
+ const october=(await get('/api/state?month=2026-10','GET',null,cookie)).json.data;
+ assert.equal(october.rows.filter(x=>x.title==='Juanma chat').length,1);
+ assert.equal(october.rows.filter(x=>x.title==='Super chat').length,1);
+ const invalid={requestId:'chat-suite-test-002',transactions:[
+   {type:'expense',title:'Este no debe aparecer',amount:220,date:'2026-10-19',isPaid:false},
+   {type:'expense',title:'Compra invalida',amount:1500,date:'2026-10-19',
+     installmentCount:3,accountId:'mp'}
+ ]};
+ const rejected=await get('/api/transactions/batch','POST',invalid,cookie);
+ assert.equal(rejected.code,400);
+ const after=(await get('/api/state?month=2026-10','GET',null,cookie)).json.data;
+ assert.equal(after.rows.filter(x=>x.title==='Este no debe aparecer').length,0);
 });

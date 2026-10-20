@@ -1,3 +1,4 @@
+import { setupChat } from './chat.js?v=6';
 const $ = id => document.getElementById(id);
 const $$ = selector => [...document.querySelectorAll(selector)];
 const fmt = n => new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS',maximumFractionDigits:2}).format(Number(n||0));
@@ -68,14 +69,14 @@ function rowsMarkup(rows,full){
   if(!rows.length)return '<div class="empty">No hay movimientos en este mes. <br>Probá registrar uno hablando con el asistente ✦</div>';
   return rows.map(t=>{
     const income=t.type==='income',id=t.isInstallment?t.installmentId:t.id,tag=t.isInstallment?' · Cuota '+t.number+'/'+t.total:'';
-    const subtitle=dateLabel(t.date)+' · '+escape(t.category)+' · '+escape(account(t.accountId)?.name||'Sin medio')+tag+(t.isRecurring?' · Fijo mensual':'');
+    const subtitle=(t.dueDate?'Vence '+dateLabel(t.dueDate)+' · ':'')+dateLabel(t.date)+' · '+escape(t.category)+' · '+escape(account(t.accountId)?.name||'Sin medio')+tag+(t.isRecurring?' · Fijo mensual':'');
     const status=income?'Ingreso':t.isPaid?'Pagado':'Pendiente';
     return '<div class="tx-row"><span class="tx-icon '+(income?'income':'')+'">'+iconFor(t.category)+'</span><div class="tx-info"><strong>'+escape(t.title)+'</strong><small>'+subtitle+'</small></div><div class="tx-amount"><strong class="'+(income?'incoming':'')+'">'+(income?'+':'−')+fmt(t.amount)+'</strong><small>'+status+'</small></div>'+(full?'<div class="tx-ops">'+(!income?'<button class="action-mini" data-paid="'+escape(id)+'" data-next-paid="'+(!t.isPaid)+'" title="'+(t.isPaid?'Marcar pendiente':'Marcar pagado')+'">'+(t.isPaid?'↶':'✓')+'</button>':'')+(!t.isInstallment&&!t.isRecurring?'<button class="action-mini" data-edit="'+escape(t.id)+'" title="Editar">✎</button>':'')+'<button class="action-mini" data-delete="'+escape(t.isInstallment?t.purchaseId:t.isRecurring?t.recurrenceId:t.id)+'" title="'+(t.isInstallment?'Eliminar compra completa':'Eliminar')+'">✕</button></div>':'')+'</div>';
   }).join('');
 }
 function upcomingMarkup(rows) {
   if(!rows.length)return '<div class="empty">¡Todo al día! No tenés pagos pendientes en este mes.</div>';
-  return rows.map(t=>'<div class="due-item"><div class="due-date"><strong>'+escape(t.date.slice(8,10))+'</strong><small>'+escape(t.date.slice(5,7))+'</small></div><div class="due-details"><strong>'+escape(t.title)+'</strong><small>'+escape(account(t.accountId)?.name||t.category)+(t.isInstallment?' · Cuota '+t.number+'/'+t.total:'')+'</small></div><span class="due-price">'+fmt(t.amount)+'</span></div>').join('');
+  return rows.map(t=>'<div class="due-item"><div class="due-date"><strong>'+escape((t.dueDate||t.date).slice(8,10))+'</strong><small>'+escape((t.dueDate||t.date).slice(5,7))+'</small></div><div class="due-details"><strong>'+escape(t.title)+'</strong><small>'+escape(account(t.accountId)?.name||t.category)+(t.isInstallment?' · Cuota '+t.number+'/'+t.total:'')+'</small></div><span class="due-price">'+fmt(t.amount)+'</span></div>').join('');
 }
 function categoryMarkup(cats) {
   if(!cats.length)return '<div class="empty">Todavía no hay gastos para analizar.</div>';
@@ -93,10 +94,13 @@ function setTransactionMode(){
   const isIncome=type==='income';
   $('installmentsField').classList.toggle('hidden',isIncome);
   $('recurringField').classList.toggle('hidden',isIncome);
+  const a=account($('txAccount').value);
+  const isCredit=!isIncome&&a?.kind==='credit';
+  $('dueDateField').classList.toggle('hidden',isIncome||isCredit||$('txRecurring').checked);
   $('txPaidLabel').textContent=isIncome?'Ya recibido':'Ya pagado';
   $('installmentHint').classList.toggle('hidden',isIncome);
-  if(isIncome){$('txInstallments').value='1';$('txRecurring').checked=false;}
-  const a=account($('txAccount').value);
+  if(isIncome){$('txInstallments').value='1';$('txRecurring').checked=false;$('txDueDate').value='';}
+  if(isCredit)$('txDueDate').value='';
   if(!isIncome&&a?.kind==='credit'){
     $('txPaid').checked=false;$('txPaid').disabled=true;
     $('installmentHint').textContent='Las compras con crédito generan vencimientos independientes según el cierre de la tarjeta.';
@@ -113,12 +117,13 @@ function openMovement(item){
   $('txAmount').value=item?.amount||'';
   $('txTitle').value=item?.title||'';
   $('txDate').value=item?.date||localDay();
+  $('txDueDate').value=item?.dueDate||'';
   $('txCategory').value=item?.category||'Otros';
   populateAccounts(item?.accountId||'');
   $('txAccount').value=item?.accountId||'';
   $('txInstallments').value='1';
   $('txRecurring').checked=false;
-  $('txPaid').checked=item?item.isPaid:true;
+  $('txPaid').checked=item?item.isPaid:false;
   $('txNotes').value=item?.notes||'';
   $$('.segmented input').forEach(x=>x.disabled=!!item);
   $('txInstallments').disabled=!!item;
@@ -128,7 +133,7 @@ function openMovement(item){
 async function saveMovement(e){
   e.preventDefault();
   const payload={type:$('movementForm').elements.movementType.value,amount:Number($('txAmount').value),
-    title:$('txTitle').value,date:$('txDate').value,category:$('txCategory').value,
+    title:$('txTitle').value,date:$('txDate').value,dueDate:$('txDueDate').value||null,category:$('txCategory').value,
     accountId:$('txAccount').value||null,installmentCount:Number($('txInstallments').value),
     isRecurring:$('txRecurring').checked,
     isPaid:$('txPaid').checked,notes:$('txNotes').value};
@@ -166,7 +171,9 @@ function preview(){
     (d.installmentCount>1 && account(d.accountId)?.kind!=='credit')||(d.installmentCount>1&&d.isRecurring)||questions.length>0;
   const entries=[
     ['Tipo',d.type==='income'?'Ingreso':'Gasto'],['Importe',d.amount?fmt(d.amount):'Sin identificar'],
-    ['Concepto',d.title],['Fecha',dateLabel(d.date)],['Categoría',d.category],
+    ['Concepto',d.title],['Registrado',dateLabel(d.date)],
+    ['Vencimiento',d.dueDate?dateLabel(d.dueDate):'Sin vencimiento'],
+    ['Estado',d.isPaid?'Ya pagado':'Pendiente de pago'],['Categoría',d.category],
     ['Medio',method],['Pago',d.isRecurring?'Gasto fijo mensual':d.installmentCount>1?d.installmentCount+' cuotas':(d.type==='income'?'Ingreso único':'Pago único')]
   ];
   $('assistantPreview').innerHTML='<h3>✦ Esto entendí</h3><div class="preview-grid">'+entries.map(x=>'<div class="preview-item"><small>'+escape(x[0])+'</small><strong>'+escape(x[1])+'</strong></div>').join('')+'</div>'+
@@ -179,6 +186,7 @@ function preview(){
     $('movementForm').elements.movementType.value=draft.type;
     $('txAmount').value=draft.amount||'';$('txTitle').value=draft.title||'';
     $('txDate').value=draft.date||localDay();
+    $('txDueDate').value=draft.dueDate||'';
     $('txCategory').value=categories.includes(draft.category)?draft.category:'Otros';
     $('txAccount').value=draft.accountId||'';
     $('txInstallments').value=String(draft.installmentCount||1);
@@ -248,17 +256,20 @@ async function toggleVoice(){
   }catch(err){toast('No se pudo acceder al micrófono: '+err.message);}
 }
 function events(){
+  setupChat({
+    request,refresh,getAccounts:()=>state.data?.accounts||[],fmt,dateLabel,hasAI:()=>state.aiEnabled,
+    openQuick:()=>{$('assistantPreview').classList.add('hidden');state.draft=null;showDialog('assistantDialog');}
+  });
   $$('[data-view]').forEach(b=>b.addEventListener('click',()=>go(b.dataset.view)));
   $$('[data-go]').forEach(b=>b.addEventListener('click',()=>go(b.dataset.go)));
-  $$(['.assistant-open']).forEach(b=>b.addEventListener('click',()=>{
-    $('assistantPreview').classList.add('hidden');state.draft=null;showDialog('assistantDialog');
-  }));
+  // El asistente principal se abre como conversación; el modo de un gasto queda como alternativa.
   $$(['.open-movement','#newTransactionBtn','#mobileTopAdd']).forEach(b=>b.addEventListener('click',()=>openMovement()));
   $$('.close-dialog').forEach(b=>b.addEventListener('click',closeDialogs));
   $$('dialog').forEach(d=>d.addEventListener('click',e=>{if(e.target===d)d.close();}));
   $('movementForm').addEventListener('submit',saveMovement);
   $$('.segmented input').forEach(b=>b.addEventListener('change',setTransactionMode));
   $('txAccount').addEventListener('change',setTransactionMode);
+  $('txRecurring').addEventListener('change',setTransactionMode);
   $('movementSearch').addEventListener('input',()=>{$('allMovements').innerHTML=rowsMarkup(filteredRows(),true);});
   $('typeFilter').addEventListener('change',()=>{$('allMovements').innerHTML=rowsMarkup(filteredRows(),true);});
   $('monthFilter').addEventListener('change',async e=>{if(!e.target.value)return;state.month=e.target.value;try{await refresh();}catch(err){toast(err.message);}});

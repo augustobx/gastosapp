@@ -62,6 +62,40 @@ const validateAccount = (s,id) => {
 const clampText = value=>String(value||'').slice(0,450);
 const categoryField = value=>String(value||'Otros').slice(0,60);
 const kindEnum = ['cash','debit','credit','wallet','transfer','other'];
+function insertTransaction(s,data) {
+    const type=String(data.type||'expense');
+    if(!['expense','income'].includes(type))throw new Error('Tipo de movimiento inválido');
+    const amount=finiteAmount(data.amount);
+    const date=dateField(data.date);
+    const dueDate=data.dueDate ? dateField(data.dueDate) : null;
+    const title=titleField(data.title);
+    const accountId=validateAccount(s,data.accountId);
+    const category=categoryField(data.category);
+    const notes=clampText(data.notes);
+    const count=Number(data.installmentCount||1);
+    if(!Number.isInteger(count)||count<1||count>60)throw new Error('Cuotas inválidas');
+    if(type==='income' && count!==1)throw new Error('Los ingresos no admiten cuotas');
+    if(type==='income' && dueDate)throw new Error('El vencimiento corresponde a un gasto');
+    const a=s.accounts.find(a=>a.id===accountId);
+    if(data.isRecurring===true){
+      if(type!=='expense'||count!==1)throw new Error('Los gastos recurrentes deben ser gastos mensuales sin cuotas');
+      const recurring={id:uid(),title,amount,category,accountId,notes,startDate:date,paidMonths:{}};
+      if(data.isPaid===true) recurring.paidMonths[date.slice(0,7)]=true;
+      s.recurrences.unshift(recurring);return {kind:'recurrence',data:recurring};
+    }
+    if(type==='expense' && (count>1 || a?.kind==='credit')) {
+      if(count>1 && a?.kind!=='credit')throw new Error('Seleccioná una tarjeta de crédito para las cuotas');
+      const purchase={id:uid(),title,amount,date,category,notes,accountId,
+        installments:schedule({amount,count,date,account:a}),createdAt:new Date().toISOString()};
+      s.purchases.unshift(purchase);return {kind:'purchase',data:purchase};
+    }
+    const paid = typeof data.isPaid==='boolean' ? data.isPaid : (type==='income' || !dueDate || dueDate <= date);
+    const t={id:uid(),type,title,amount,date,dueDate,category,accountId,notes,
+      isPaid:paid,paidAt:paid?new Date().toISOString():null,
+      createdAt:new Date().toISOString()};
+    s.transactions.unshift(t);return {kind:'transaction',data:t};
+}
+
 export const store = {
   snapshot(month=monthOf(isoDay(new Date()))) {
     const s=get();
@@ -124,38 +158,27 @@ export const store = {
     s.accounts.splice(i,1);persist();return true;
   },
   add(data) {
-    const s=get();
-    const type=String(data.type||'expense');
-    if(!['expense','income'].includes(type))throw new Error('Tipo de movimiento inválido');
-    const amount=finiteAmount(data.amount);
-    const date=dateField(data.date);
-    const dueDate=data.dueDate ? dateField(data.dueDate) : null;
-    const title=titleField(data.title);
-    const accountId=validateAccount(s,data.accountId);
-    const category=categoryField(data.category);
-    const notes=clampText(data.notes);
-    const count=Number(data.installmentCount||1);
-    if(!Number.isInteger(count)||count<1||count>60)throw new Error('Cuotas inválidas');
-    if(type==='income' && count!==1)throw new Error('Los ingresos no admiten cuotas');
-    if(type==='income' && dueDate)throw new Error('El vencimiento corresponde a un gasto');
-    const a=s.accounts.find(a=>a.id===accountId);
-    if(data.isRecurring===true){
-      if(type!=='expense'||count!==1)throw new Error('Los gastos recurrentes deben ser gastos mensuales sin cuotas');
-      const recurring={id:uid(),title,amount,category,accountId,notes,startDate:date,paidMonths:{}};
-      if(data.isPaid===true) recurring.paidMonths[date.slice(0,7)]=true;
-      s.recurrences.unshift(recurring);persist();return {kind:'recurrence',data:recurring};
-    }
-    if(type==='expense' && (count>1 || a?.kind==='credit')) {
-      if(count>1 && a?.kind!=='credit')throw new Error('Seleccioná una tarjeta de crédito para las cuotas');
-      const purchase={id:uid(),title,amount,date,category,notes,accountId,
-        installments:schedule({amount,count,date,account:a}),createdAt:new Date().toISOString()};
-      s.purchases.unshift(purchase);persist();return {kind:'purchase',data:purchase};
-    }
-    const paid = typeof data.isPaid==='boolean' ? data.isPaid : (type==='income' || !dueDate || dueDate <= date);
-    const t={id:uid(),type,title,amount,date,dueDate,category,accountId,notes,
-      isPaid:paid,paidAt:paid?new Date().toISOString():null,
-      createdAt:new Date().toISOString()};
-    s.transactions.unshift(t);persist();return {kind:'transaction',data:t};
+    const result=insertTransaction(get(),data);
+    persist();
+    return result;
+  },
+  // Guarda una tanda completa o ninguna; reintentar la misma solicitud no la duplica.
+  addBatch(transactions, requestId) {
+    if(!Array.isArray(transactions)||transactions.length<1||transactions.length>25)
+      throw new Error('La tanda debe contener entre 1 y 25 movimientos');
+    if(typeof requestId!=='string'||!/^[-a-zA-Z0-9_]{8,100}$/.test(requestId))
+      throw new Error('Identificador de tanda inválido');
+    const previous=get();
+    const prior=previous.processedBatches?.find(x=>x.id===requestId);
+    if(prior)return {count:prior.count,alreadySaved:true};
+    const working=structuredClone(previous);
+    const inserted=transactions.map(data=>insertTransaction(working,data));
+    working.processedBatches??=[];
+    working.processedBatches.push({id:requestId,count:inserted.length});
+    working.processedBatches=working.processedBatches.slice(-200);
+    state=working;
+    try{persist();}catch(error){state=previous;throw error;}
+    return {count:inserted.length,alreadySaved:false};
   },
   editTransaction(id,data) {
     const s=get();const t=s.transactions.find(x=>x.id===id);

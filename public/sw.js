@@ -1,6 +1,6 @@
 // Solo assets estáticos. Nunca cachear datos financieros ni respuestas API.
-const CACHE='gastosapp-v5';
-const CORE=['/','/index.html','/app.css?v=5','/app.js?v=5','/manifest.json','/icons/icon.svg'];
+const CACHE='gastosapp-v6';
+const CORE=['/','/index.html','/app.css?v=6','/app.js?v=6','/chat.js?v=6','/manifest.json','/icons/icon.svg'];
 self.addEventListener('install',event=>{
   event.waitUntil(caches.open(CACHE).then(c=>c.addAll(CORE)));
   self.skipWaiting();
