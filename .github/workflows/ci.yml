@@ -14,4 +14,4 @@ jobs:
           node-version: '22'
       - run: npm install --omit=dev
       - run: npm test
-      - run: node --check server.js && node --check lib/ai-chat.js && node --check public/app.js && node --check public/chat.js && node --check db.js
+      - run: node --check server.js && node --check lib/openai-health.js && node --check lib/ai-chat.js && node --check public/app.js && node --check public/chat.js && node --check public/diagnostics.js && node --check db.js

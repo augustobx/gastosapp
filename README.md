@@ -114,3 +114,24 @@ Chat, transcripción y voz generan costos independientes. Los límites de solici
 Privacidad: jamás colocar la clave en el frontend ni compartirla en el chat. Los gastos se envían a OpenAI solo al habilitar las funciones IA. Los datos no se guardan en GastosApp hasta que el usuario confirma. Lotes atómicos/idempotentes.
 
 Ejemplo esperado: "Primero 980000 a Juana, 160000 a Personal y 300000 del supermercado, todo a fin de mes". La IA debe presentar TRES gastos separados (980000, 160000, 300000), pendientes y con vencimiento a fin de mes.
+
+## Diagnóstico y calidad de voz (v8)
+
+En Configuración > Conexión con OpenAI hay 3 pruebas **reales e independientes**:
+1. Interpretación: solicita una respuesta pequeña al modelo OPENAI_NLU_MODEL.
+2. Transcripción: envía un WAV de silencio sintético de 1,25 segundos al modelo OPENAI_STT_MODEL. Espera HTTP 200 con campo text (puede estar vacío); no prueba tu micrófono físico.
+3. Voz: genera un MP3 corto con OPENAI_TTS_MODEL y la voz elegida (Marin, Cedar, Coral, etc.). También podés escuchar un ejemplo con el reproductor nativo del navegador.
+
+El panel informa HTTP 200 o el estado upstream de OpenAI con código, explicación y posible solución. Errores típicos: 401 clave revocada, 403 sin permisos, 404 modelo inválido, 429 cuota, crédito o límite de velocidad, 400 audio rechazado, timeout/red. Los errores no revelan credenciales. Cada prueba cuesta una pequeña cantidad de API; no se ejecuta automáticamente en cada apertura. El consumo real se controla desde https://platform.openai.com/usage.
+
+### Si dice "No pude transcribir"
+
+La transcripción del chat ahora muestra tamaño en KB, MIME del navegador, modelo, código HTTP que devuelve OpenAI (y código/mensaje/hint). Distingue micrófono no autorizado, ausencia de micrófono, grabación menor a 0,85 s, archivo vacío, formato incorrecto, saldo, permisos y fallas del servidor. Al grabar, tocá el micrófono para iniciar y volvé a tocarlo para detener después de hablar. Se negocia el formato con MediaRecorder.isTypeSupported.
+
+### Si la voz es robótica
+
+El modo Voz natural usa audio MP3 de OpenAI con indicaciones de español argentino y selección de voces en Configuración (Marin predeterminada; Cedar como alternativa). La aplicación **ya no cae silenciosamente** a speechSynthesis cuando falla OpenAI: aparece un aviso claro. Si el navegador bloquea autoplay, tocá "Volver a escuchar", o utilizá el reproductor con controles de la vista Configuración. SpeechSynthesis queda disponible solamente cuando desactivás Voz natural o la API no está configurada.
+
+El TTS es voz sintética de IA y no una grabación humana. La naturalidad real varía según voz, modelo, navegador y reproducción. Usar Voz natural, Transcripción IA y Conversación IA consume créditos por separado. Los tests reales necesitan OPENAI_API_KEY en el contenedor; nunca subir .env a GitHub.
+
+**Despliegue seguro**: estando en /opt/apps/gastosapp ejecutar git pull --ff-only origin main, docker compose config -q, docker compose up -d --build --force-recreate web. Solo afecta servicio web de GastosApp, preserva volumen.

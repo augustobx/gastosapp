@@ -1,4 +1,5 @@
-import { setupChat } from './chat.js?v=7';
+import { setupChat } from './chat.js?v=8';
+import { setupAIDiagnostics } from './diagnostics.js?v=8';
 const $ = id => document.getElementById(id);
 const $$ = selector => [...document.querySelectorAll(selector)];
 const fmt = n => new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS',maximumFractionDigits:2}).format(Number(n||0));
@@ -8,6 +9,7 @@ const dateLabel = s => s ? s.slice(8,10)+'/'+s.slice(5,7)+'/'+s.slice(0,4) : '';
 const iconFor = c => ({Comida:'◈',Servicios:'⌁',Hogar:'⌂',Transporte:'➤',Salud:'✚',Educación:'▤','Deudas y préstamos':'▧',Tecnología:'▣',Entretenimiento:'✦',Indumentaria:'✧',Extra:'↗',Sueldo:'↗',Ventas:'↗'})[c]||'◉';
 const types = {dashboard:['Resumen','Tu dinero, más claro.','Una mirada simple a tus finanzas.'],movements:['Movimientos','Cada peso cuenta.','Buscá, controlá y administrá tus movimientos.'],cards:['Cuentas y tarjetas','Todos tus medios de pago.','Compras, tarjetas y vencimientos.'],reports:['Estadísticas','Conocé tus números.','Así se distribuye tu dinero.'],settings:['Configuración','A tu manera.','Ajustá la experiencia a tus necesidades.']};
 const categories = ['Comida','Servicios','Hogar','Transporte','Salud','Educación','Tecnología','Entretenimiento','Indumentaria','Deudas y préstamos','Tarjetas','Otros','Extra','Sueldo','Ventas'];
+let aiDiagnostics=null;
 const state = {month:localDay().slice(0,7),data:null,auth:false,aiEnabled:false,view:'dashboard',draft:null,editId:null,accountEditId:null,recognizer:null,recorder:null,audioStream:null,audioChunks:[],deferredInstall:null};
 function toast(message){const t=$('toast');t.textContent=message;t.classList.add('visible');clearTimeout(toast.timer);toast.timer=setTimeout(()=>t.classList.remove('visible'),4200);}
 async function request(url, method='GET',body) {
@@ -17,7 +19,15 @@ async function request(url, method='GET',body) {
   try{response=await fetch(url,options);}catch{throw new Error('No hay conexión con el servidor');}
   let j={};try{j=await response.json();}catch{}
   if(response.status===401){showLogin();throw new Error('Volvé a iniciar sesión');}
-  if(!response.ok)throw new Error(j.error||'La operación no pudo completarse');
+  if(!response.ok){
+    const detail=(j.upstreamStatus?'OpenAI HTTP '+j.upstreamStatus+' · ':'')+
+      (j.error||'La operación no pudo completarse')+
+      (j.hint?' · SOLUCIÓN: '+j.hint:'');
+    const error=new Error(detail);
+    error.code=j.code||'http_'+response.status;
+    error.status=response.status;
+    throw error;
+  }
   return j.data!==undefined?j.data:j;
 }
 function showLogin(){state.auth=false;$('loginScreen').classList.remove('hidden');}
@@ -28,6 +38,7 @@ function go(view){
   $$('[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===view));
   const meta=types[view];$('breadcrumb').textContent=meta[0];$('pageTitle').textContent=meta[1];$('pageSubtitle').textContent=meta[2];
   window.scrollTo({top:0,behavior:'smooth'});
+  if(view==='settings'&&state.auth)void aiDiagnostics?.load();
 }
 const account = id => state.data?.accounts.find(a=>a.id===id);
 function populateAccounts(selected){
@@ -256,6 +267,7 @@ async function toggleVoice(){
   }catch(err){toast('No se pudo acceder al micrófono: '+err.message);}
 }
 function events(){
+  aiDiagnostics=setupAIDiagnostics();
   setupChat({
     request,refresh,getAccounts:()=>state.data?.accounts||[],fmt,dateLabel,hasAI:()=>state.aiEnabled,
     openQuick:()=>{$('assistantPreview').classList.add('hidden');state.draft=null;showDialog('assistantDialog');}

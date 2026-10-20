@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { store } from './db.js';
 import { interpret, isoDay, monthOf } from './lib/engine.js';
 import { aiChatTurn } from './lib/ai-chat.js';
+import { VOICES,callOpenAI,makeSpeechBody,publicError,diagnostics } from './lib/openai-health.js';
 
 const port=Number(process.env.PORT||3000);
 const password=process.env.APP_PASSWORD||'';
@@ -82,7 +83,8 @@ app.post('/api/logout',(req,res)=>{
 app.use('/api',(req,res,next)=>auth(req)?next():res.status(401).json({error:'Sesión requerida'}));
 
 const wrap=fn=>async(req,res)=>{try{const value=await fn(req,res);if(!res.headersSent)res.json({ok:true,data:value});}
-  catch(e){console.error('API',req.path,e.message);if(!res.headersSent)res.status(e.status||400).json({error:e.message||'Error inesperado'});}};
+  catch(e){const detail=publicError(e);console.error('API',req.path,detail.code,detail.upstreamStatus||'',detail.error);
+    if(!res.headersSent)res.status(e.status||400).json(detail);}};
 app.get('/api/state',wrap(req=>store.snapshot(req.query.month||monthOf(isoDay(new Date())))));
 app.patch('/api/settings',wrap(req=>store.settings(req.body)));
 app.post('/api/accounts',wrap(req=>store.addAccount(req.body)));
@@ -94,6 +96,23 @@ app.patch('/api/transactions/:id',wrap(req=>store.editTransaction(req.params.id,
 app.patch('/api/paid/:id',wrap(req=>store.setPaid(req.params.id,req.body.isPaid)));
 app.delete('/api/transactions/:id',wrap(req=>store.remove(req.params.id)));
 app.get('/api/export',wrap(()=>store.export()));
+// No se expone jamás la clave. Los tests reales a OpenAI consumen créditos mínimos.
+app.get('/api/ai/config',wrap(()=>({
+  configured:Boolean(process.env.OPENAI_API_KEY),
+  nlu:process.env.OPENAI_NLU_MODEL||'gpt-4o-mini',
+  stt:process.env.OPENAI_STT_MODEL||'gpt-4o-mini-transcribe',
+  tts:process.env.OPENAI_TTS_MODEL||'gpt-4o-mini-tts',
+  defaultVoice:process.env.OPENAI_TTS_VOICE||'marin',
+  voices:VOICES
+})));
+app.post('/api/ai/diagnostics/:service',limited(4),wrap(async req=>{
+  const type=String(req.params.service);
+  const model=type==='nlu'?(process.env.OPENAI_NLU_MODEL||'gpt-4o-mini'):
+    type==='stt'?(process.env.OPENAI_STT_MODEL||'gpt-4o-mini-transcribe'):
+    (process.env.OPENAI_TTS_MODEL||'gpt-4o-mini-tts');
+  const voice=VOICES.includes(req.body?.voice)?req.body.voice:(process.env.OPENAI_TTS_VOICE||'marin');
+  return diagnostics(type,{key:process.env.OPENAI_API_KEY,model,voice});
+}));
 
 async function aiInterpret(text, accounts, draft) {
   if(!process.env.OPENAI_API_KEY)return draft;
@@ -168,48 +187,46 @@ app.post('/api/chat/turn',limited(20),wrap(async req=>{
   });
 }));
 app.post('/api/chat/speech',limited(16),async(req,res)=>{
-  if(!process.env.OPENAI_API_KEY)return res.status(503).json({error:'Falta configurar la clave API.'});
-  const text=String(req.body?.text||'').trim();
-  if(!text||text.length>620)return res.status(400).json({error:'Texto de voz fuera de límite (620 caracteres).'});
-  const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),24000);
+  const phrase=String(req.body?.text||'').trim();
+  if(!phrase||phrase.length>620)return res.status(400).json({error:'Texto de voz demasiado extenso (máximo 620 caracteres).',code:'invalid_text'});
   try{
-    const response=await fetch('https://api.openai.com/v1/audio/speech',{
-      method:'POST',signal:controller.signal,
-      headers:{Authorization:'Bearer '+process.env.OPENAI_API_KEY,'Content-Type':'application/json'},
-      body:JSON.stringify({
-        model:process.env.OPENAI_TTS_MODEL||'gpt-4o-mini-tts',
-        voice:process.env.OPENAI_TTS_VOICE||'marin',
-        input:text,response_format:'mp3',
-        instructions:'Hablá en español argentino natural, cálido, claro y conversacional. Evitá ritmo robótico. Pronunciá bien los montos en pesos y las fechas. No agregues palabras al texto.'
-      })
+    const chosen=VOICES.includes(req.body?.voice)?req.body.voice:(process.env.OPENAI_TTS_VOICE||'marin');
+    const response=await callOpenAI('https://api.openai.com/v1/audio/speech',{
+      key:process.env.OPENAI_API_KEY,
+      body:makeSpeechBody({text:phrase,voice:chosen,model:process.env.OPENAI_TTS_MODEL||'gpt-4o-mini-tts'}),
+      headers:{'Content-Type':'application/json'},timeoutMs:30000
     });
-    if(!response.ok)return res.status(502).json({error:'No se pudo generar la voz de OpenAI. Comprobá saldo y permisos.'});
     const bytes=Buffer.from(await response.arrayBuffer());
-    if(bytes.length>3_000_000)return res.status(502).json({error:'El audio generado excedió el límite permitido.'});
-    res.setHeader('Content-Type','audio/mpeg');
-    res.setHeader('Cache-Control','private, no-store');
-    res.send(bytes);
-  }catch(e){if(!res.headersSent)res.status(502).json({error:'Error al sintetizar voz. Intentá de nuevo.'});}
-  finally{clearTimeout(timeout);}
+    if(bytes.length<100)throw Object.assign(new Error('OpenAI devolvió audio vacío.'),{status:502,code:'empty_audio'});
+    if(bytes.length>3_000_000)throw Object.assign(new Error('Audio generado demasiado grande.'),{status:502,code:'audio_too_large'});
+    res.setHeader('Content-Type','audio/mpeg');res.setHeader('Cache-Control','private, no-store');res.send(bytes);
+  }catch(e){const problem=publicError(e);console.error('TTS',problem.code,problem.upstreamStatus||'',problem.error);
+    if(!res.headersSent)res.status(e.status||502).json(problem);}
 });
-app.post('/api/voice/transcribe',limited(10),express.raw({type:['audio/webm','audio/mp4','audio/mpeg','audio/ogg','audio/wav','application/octet-stream'],limit:'8mb'}),wrap(async req=>{
-  if(!process.env.OPENAI_API_KEY)throw new Error('Configurá OPENAI_API_KEY para transcribir audio; también podés usar el dictado nativo del navegador.');
-  if(!Buffer.isBuffer(req.body)||req.body.length<100)throw new Error('Audio vacío');
-  const type=String(req.headers['content-type']||'audio/webm').split(';')[0];
-  const ext=type.includes('mp4')?'mp4':type.includes('ogg')?'ogg':type.includes('wav')?'wav':type.includes('mpeg')?'mp3':'webm';
-  const form=new FormData();
-  form.set('file',new Blob([req.body],{type}), 'gasto.'+ext);
-  form.set('model',process.env.OPENAI_STT_MODEL||'gpt-4o-mini-transcribe');
-  form.set('language','es');
-  form.set('prompt','Español de Argentina. Gastos, ingresos, tarjeta Visa, Mastercard, Mercado Pago, MP, cuotas, lucas, palos, guita, efectivo, transferencia.');
-  const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),30000);
-  try {
-    const r=await fetch('https://api.openai.com/v1/audio/transcriptions',{method:'POST',
-      headers:{Authorization:'Bearer '+process.env.OPENAI_API_KEY},body:form,signal:controller.signal});
-    if(!r.ok)throw new Error('La transcripción no pudo completarse');
-    const j=await r.json();return {text:String(j.text||'')};
-  } finally{clearTimeout(timeout);}
-}));
+app.post('/api/voice/transcribe',limited(10),
+  express.raw({type:['audio/webm','audio/mp4','audio/mpeg','audio/ogg','audio/wav','audio/x-wav','application/octet-stream'],limit:'8mb'}),
+  wrap(async req=>{
+    if(!process.env.OPENAI_API_KEY)throw Object.assign(new Error('Falta OPENAI_API_KEY en el contenedor.'),{status:503,code:'missing_key',hint:'Configurar .env y recrear servicio.'});
+    const blob=req.body;
+    const type=String(req.headers['content-type']||'').split(';')[0].toLowerCase();
+    if(!Buffer.isBuffer(blob))throw Object.assign(new Error('El servidor no recibió audio. El navegador envió un tipo MIME no compatible: '+(type||'sin tipo')),{status:415,code:'unsupported_audio',hint:'Probá otro navegador o cambiá el formato de grabación.'});
+    if(blob.length<500)throw Object.assign(new Error('La grabación fue demasiado corta o vacía ('+blob.length+' bytes).'),{status:400,code:'empty_audio',hint:'Mantené el micrófono activo al menos un segundo, hablá, y luego detené la grabación.'});
+    const ext=type==='audio/mp4'?'mp4':type==='audio/ogg'?'ogg':type==='audio/wav'||type==='audio/x-wav'?'wav':
+      type==='audio/mpeg'?'mp3':'webm';
+    const form=new FormData();
+    form.set('file',new Blob([blob],{type:type||'audio/webm'}),'dictado.'+ext);
+    form.set('model',process.env.OPENAI_STT_MODEL||'gpt-4o-mini-transcribe');
+    form.set('language','es');
+    form.set('prompt','Habla argentina sobre dinero, cuotas, sueldos, préstamos, nombres de personas y empresas. Mantener cifras completas: 980000, 160000, 300000; Juana, Personal, Mercado Pago.');
+    const r=await callOpenAI('https://api.openai.com/v1/audio/transcriptions',{
+      key:process.env.OPENAI_API_KEY,body:form,timeoutMs:35000
+    });
+    const result=await r.json();
+    if(typeof result.text!=='string')throw Object.assign(new Error('OpenAI respondió HTTP 200 pero sin texto de transcripción.'),{status:502,code:'missing_transcript'});
+    if(!result.text.trim())throw Object.assign(new Error('OpenAI respondió HTTP 200 pero no detectó palabras en la grabación.'),{status:422,code:'no_speech',hint:'Verificá que el micrófono correcto esté activo y hablá un poco más cerca.'});
+    return {text:result.text,model:process.env.OPENAI_STT_MODEL||'gpt-4o-mini-transcribe',httpStatus:200};
+  })
+);
 
 app.use(express.static(path.join(path.dirname(fileURLToPath(import.meta.url)),'public'),{maxAge:'15m'}));
 app.get('*',(_req,res)=>res.sendFile(path.join(path.dirname(fileURLToPath(import.meta.url)),'public','index.html')));

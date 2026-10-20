@@ -81,5 +81,5 @@ test('la solicitud de IA usa schema estricto y evita guardar por su cuenta',asyn
 test('si falla OpenAI no inventa registros ni cae silenciosamente al parser de un solo gasto',async()=>{
  await assert.rejects(()=>aiChatTurn({text:'algo',accounts,items:[],phase:'collect',key:'',today:date}),/OPENAI_API_KEY/);
  await assert.rejects(()=>aiChatTurn({text:'algo',accounts,items:[],phase:'collect',key:'test',
-  fetcher:async()=>({ok:false,status:429}),today:date}),/Límite/);
+  fetcher:async()=>({ok:false,status:429}),today:date}),/OpenAI HTTP 429/);
 });
