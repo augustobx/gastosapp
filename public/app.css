@@ -97,3 +97,8 @@
 .ai-network-check strong{font-size:13px}
 .ai-network-check p{font-size:12px;line-height:1.55;color:var(--sub);margin:0}
 .ai-network-check .btn{justify-self:start}
+
+.ai-provider-options{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:13px}
+.ai-provider-options label{font-size:12px;font-weight:650;color:var(--sub)}
+.ai-provider-options select{display:block;width:100%;margin-top:7px}
+@media(max-width:760px){.ai-provider-options{grid-template-columns:1fr}}

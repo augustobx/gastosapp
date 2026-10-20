@@ -14,6 +14,11 @@ services:
       OPENAI_STT_MODEL: ${OPENAI_STT_MODEL:-gpt-4o-mini-transcribe}
       OPENAI_TTS_MODEL: ${OPENAI_TTS_MODEL:-gpt-4o-mini-tts}
       OPENAI_TTS_VOICE: ${OPENAI_TTS_VOICE:-marin}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_NLU_MODEL: ${GEMINI_NLU_MODEL:-gemini-3.8-flash}
+      GEMINI_STT_MODEL: ${GEMINI_STT_MODEL:-gemini-3.8-flash}
+      GEMINI_TTS_MODEL: ${GEMINI_TTS_MODEL:-gemini-3.8-flash-tts}
+      GEMINI_TTS_VOICE: ${GEMINI_TTS_VOICE:-Kore}
     volumes:
       - gastosapp-data:/app/data
     networks:

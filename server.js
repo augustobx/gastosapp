@@ -7,6 +7,7 @@ import { store } from './db.js';
 import { interpret, isoDay, monthOf } from './lib/engine.js';
 import { aiChatTurn } from './lib/ai-chat.js';
 import { VOICES,callOpenAI,makeSpeechBody,publicError,diagnostics,networkDiagnostics } from './lib/openai-health.js';
+import { GEMINI_MODELS,GEMINI_VOICES,geminiChatTurn,geminiTranscribe,geminiSpeech,geminiNetwork,geminiDiagnostic } from './lib/gemini.js';
 
 const port=Number(process.env.PORT||3000);
 const password=process.env.APP_PASSWORD||'';
@@ -64,7 +65,7 @@ function guardOrigin(req,res,next){
 app.use('/api',(req,res,next)=>{res.setHeader('X-GastosApp-Backend','node');next();});
 app.use('/api',guardOrigin);
 app.get('/api/health',(_req,res)=>res.json({status:'ok',app:'gastosapp-v2'}));
-app.get('/api/session',(req,res)=>res.json({authenticated:auth(req),aiEnabled:Boolean(process.env.OPENAI_API_KEY)}));
+app.get('/api/session',(req,res)=>res.json({authenticated:auth(req),aiEnabled:Boolean(process.env.OPENAI_API_KEY||process.env.GEMINI_API_KEY)}));
 app.post('/api/login',(req,res)=>{
   const ip=rateKey(req),now=Date.now(), record=attempts.get(ip)||{count:0,until:now+900000};
   if(record.until<now){record.count=0;record.until=now+900000;}
@@ -99,8 +100,29 @@ app.patch('/api/paid/:id',wrap(req=>store.setPaid(req.params.id,req.body.isPaid)
 app.delete('/api/transactions/:id',wrap(req=>store.remove(req.params.id)));
 app.get('/api/export',wrap(()=>store.export()));
 // No se expone jamás la clave. Los tests reales a OpenAI consumen créditos mínimos.
+const providerFrom=(value)=>{
+ const provider=value==='gemini'?'gemini':value==='openai'?'openai':
+   process.env.GEMINI_API_KEY?'gemini':'openai';
+ if(provider==='gemini'&&!process.env.GEMINI_API_KEY)throw Object.assign(new Error('GEMINI_API_KEY no configurada.'),{status:503,code:'missing_gemini_key'});
+ if(provider==='openai'&&!process.env.OPENAI_API_KEY)throw Object.assign(new Error('OPENAI_API_KEY no configurada.'),{status:503,code:'missing_key'});
+ return provider;
+};
 app.get('/api/ai/config',wrap(()=>({
-  configured:Boolean(process.env.OPENAI_API_KEY),
+  configured:Boolean(process.env.OPENAI_API_KEY||process.env.GEMINI_API_KEY),
+  providers:{
+    openai:{configured:Boolean(process.env.OPENAI_API_KEY),
+      nlu:process.env.OPENAI_NLU_MODEL||'gpt-4o-mini',
+      stt:process.env.OPENAI_STT_MODEL||'gpt-4o-mini-transcribe',
+      tts:process.env.OPENAI_TTS_MODEL||'gpt-4o-mini-tts',
+      defaultVoice:process.env.OPENAI_TTS_VOICE||'marin',voices:VOICES},
+    gemini:{configured:Boolean(process.env.GEMINI_API_KEY),
+      nlu:process.env.GEMINI_NLU_MODEL||GEMINI_MODELS.nlu,
+      stt:process.env.GEMINI_STT_MODEL||GEMINI_MODELS.stt,
+      tts:process.env.GEMINI_TTS_MODEL||GEMINI_MODELS.tts,
+      defaultVoice:process.env.GEMINI_TTS_VOICE||'Kore',voices:GEMINI_VOICES,
+      ttsOptions:[GEMINI_MODELS.tts,GEMINI_MODELS.ttsLite]}
+  },
+  defaultProvider:process.env.GEMINI_API_KEY?'gemini':'openai',
   nlu:process.env.OPENAI_NLU_MODEL||'gpt-4o-mini',
   stt:process.env.OPENAI_STT_MODEL||'gpt-4o-mini-transcribe',
   tts:process.env.OPENAI_TTS_MODEL||'gpt-4o-mini-tts',
@@ -108,11 +130,22 @@ app.get('/api/ai/config',wrap(()=>({
   voices:VOICES
 })));
 // Primero comprobar salida HTTPS y autenticación, sin generar contenido facturable.
-app.get('/api/ai/network',limited(6),wrap(async()=>networkDiagnostics({
-  key:process.env.OPENAI_API_KEY
-})));
+app.get('/api/ai/network',limited(6),wrap(async req=>{
+  const provider=providerFrom(req.query.provider);
+  return provider==='gemini'?
+    geminiNetwork({key:process.env.GEMINI_API_KEY}):
+    networkDiagnostics({key:process.env.OPENAI_API_KEY});
+}));
 app.post('/api/ai/diagnostics/:service',limited(4),wrap(async req=>{
   const type=String(req.params.service);
+  const provider=providerFrom(req.body?.provider);
+  if(provider==='gemini'){
+    const model=type==='nlu'?(process.env.GEMINI_NLU_MODEL||GEMINI_MODELS.nlu):
+      type==='stt'?(process.env.GEMINI_STT_MODEL||GEMINI_MODELS.stt):
+      (process.env.GEMINI_TTS_MODEL||GEMINI_MODELS.tts);
+    const voice=GEMINI_VOICES.includes(req.body?.voice)?req.body.voice:(process.env.GEMINI_TTS_VOICE||'Kore');
+    return geminiDiagnostic(type,{key:process.env.GEMINI_API_KEY,model,voice});
+  }
   const model=type==='nlu'?(process.env.OPENAI_NLU_MODEL||'gpt-4o-mini'):
     type==='stt'?(process.env.OPENAI_STT_MODEL||'gpt-4o-mini-transcribe'):
     (process.env.OPENAI_TTS_MODEL||'gpt-4o-mini-tts');
@@ -177,9 +210,15 @@ app.post('/api/interpret',limited(30),wrap(async req=>{
   const text=String(req.body.text||'');
   const {accounts}=store.snapshot();
   let draft=interpret(text,accounts);
-  if(req.body.useAI===true && process.env.OPENAI_API_KEY){
-    try{draft=await aiInterpret(text,accounts,draft);}
-    catch(e){draft.questions.push('IA no disponible; se utilizó el análisis local.');}
+  if(req.body.useAI===true){
+    const provider=providerFrom(req.body.provider);
+    if(provider==='gemini'){
+      // El modo rápido solo registra un movimiento: si Gemini detecta varios, pedir revisión.
+      const result=await geminiChatTurn({text,accounts,items:[],phase:'collect',
+        key:process.env.GEMINI_API_KEY,model:process.env.GEMINI_NLU_MODEL||GEMINI_MODELS.nlu});
+      if(result.action==='add'&&result.items.length===1)return result.items[0];
+      draft.questions.push('Se detectaron varios movimientos o información insuficiente. Usá el chat conversacional para registrar la tanda.');
+    }else draft=await aiInterpret(text,accounts,draft);
   }
   return draft;
 }));
@@ -187,15 +226,27 @@ app.post('/api/chat/turn',limited(20),wrap(async req=>{
   const accounts=store.snapshot().accounts;
   const items=Array.isArray(req.body?.items)?req.body.items:[];
   const phase=['collect','confirm','edit'].includes(req.body?.phase)?req.body.phase:'collect';
-  return aiChatTurn({
-    text:req.body?.text,items,accounts,phase,
-    key:process.env.OPENAI_API_KEY,model:process.env.OPENAI_NLU_MODEL||'gpt-4o-mini'
-  });
+  const provider=providerFrom(req.body?.provider);
+  return provider==='gemini'?
+    geminiChatTurn({text:req.body?.text,items,accounts,phase,key:process.env.GEMINI_API_KEY,
+      model:process.env.GEMINI_NLU_MODEL||GEMINI_MODELS.nlu}):
+    aiChatTurn({text:req.body?.text,items,accounts,phase,
+      key:process.env.OPENAI_API_KEY,model:process.env.OPENAI_NLU_MODEL||'gpt-4o-mini'});
+
 }));
 app.post('/api/chat/speech',limited(16),async(req,res)=>{
   const phrase=String(req.body?.text||'').trim();
   if(!phrase||phrase.length>620)return res.status(400).json({error:'Texto de voz demasiado extenso (máximo 620 caracteres).',code:'invalid_text'});
   try{
+    const provider=providerFrom(req.body?.provider);
+    if(provider==='gemini'){
+      const chosen=GEMINI_VOICES.includes(req.body?.voice)?req.body.voice:(process.env.GEMINI_TTS_VOICE||'Kore');
+      const output=await geminiSpeech({text:phrase,voice:chosen,key:process.env.GEMINI_API_KEY,
+        model:process.env.GEMINI_TTS_MODEL||GEMINI_MODELS.tts});
+      res.setHeader('Content-Type',output.mime);
+      res.setHeader('Cache-Control','private, no-store');
+      res.send(output.bytes);return;
+    }
     const chosen=VOICES.includes(req.body?.voice)?req.body.voice:(process.env.OPENAI_TTS_VOICE||'marin');
     const response=await callOpenAI('https://api.openai.com/v1/audio/speech',{
       key:process.env.OPENAI_API_KEY,
@@ -212,13 +263,18 @@ app.post('/api/chat/speech',limited(16),async(req,res)=>{
 app.post('/api/voice/transcribe',limited(10),
   express.raw({type:['audio/webm','audio/mp4','audio/mpeg','audio/ogg','audio/wav','audio/x-wav','application/octet-stream'],limit:'8mb'}),
   wrap(async req=>{
-    if(!process.env.OPENAI_API_KEY)throw Object.assign(new Error('Falta OPENAI_API_KEY en el contenedor.'),{status:503,code:'missing_key',hint:'Configurar .env y recrear servicio.'});
+    const provider=providerFrom(req.get('x-ai-provider'));
+
     const blob=req.body;
     const type=String(req.headers['content-type']||'').split(';')[0].toLowerCase();
     if(!Buffer.isBuffer(blob))throw Object.assign(new Error('El servidor no recibió audio. El navegador envió un tipo MIME no compatible: '+(type||'sin tipo')),{status:415,code:'unsupported_audio',hint:'Probá otro navegador o cambiá el formato de grabación.'});
     if(blob.length<500)throw Object.assign(new Error('La grabación fue demasiado corta o vacía ('+blob.length+' bytes).'),{status:400,code:'empty_audio',hint:'Mantené el micrófono activo al menos un segundo, hablá, y luego detené la grabación.'});
     const ext=type==='audio/mp4'?'mp4':type==='audio/ogg'?'ogg':type==='audio/wav'||type==='audio/x-wav'?'wav':
       type==='audio/mpeg'?'mp3':'webm';
+    if(provider==='gemini'){
+      return await geminiTranscribe({bytes:blob,mime:type,key:process.env.GEMINI_API_KEY,
+        model:process.env.GEMINI_STT_MODEL||GEMINI_MODELS.stt});
+    }
     const form=new FormData();
     form.set('file',new Blob([blob],{type:type||'audio/webm'}),'dictado.'+ext);
     form.set('model',process.env.OPENAI_STT_MODEL||'gpt-4o-mini-transcribe');

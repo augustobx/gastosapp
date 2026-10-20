@@ -1,10 +1,46 @@
+import {providerFor,saveProvider,voiceFor,saveVoice} from './providers.js?v=10';
 // Diagnóstico visible por modelo: nunca pedir ni mostrar la clave API.
 export function setupAIDiagnostics(){
  const $=id=>document.getElementById(id);
  const label={nlu:'Nlu',stt:'Stt',tts:'Tts'};
  const names={nlu:'Interpretación',stt:'Transcripción',tts:'Voz natural'};
  let config=null,playerUrl=null,busy=false;
- const voiceKey='gastosapp-tts-voice';
+ const services=['nlu','stt','tts'];
+ const available=p=>Boolean(config?.providers?.[p]?.configured);
+ const providerInfo=s=>config?.providers?.[providerFor(s)]||{};
+ const providerLabel=p=>p==='gemini'?'Gemini':'OpenAI';
+ function setProvidersUI(){
+   for(const service of services){
+     const suffix=label[service],select=$('aiProvider'+suffix);
+     for(const opt of select.options)opt.disabled=!available(opt.value);
+     const stored=providerFor(service);
+     const picked=available(stored)?stored:(available('gemini')?'gemini':'openai');
+     saveProvider(service,picked);select.value=picked;
+     $('aiModel'+suffix).textContent=providerInfo(service)[service]||'Sin modelo';
+     setState(service,'idle','Sin probar con '+providerLabel(picked)+'.');
+     $('aiTest'+suffix).disabled=!available(picked);
+   }
+   const network=$('aiNetworkProvider');
+   for(const opt of network.options)opt.disabled=!available(opt.value);
+   network.value=available(providerFor('nlu'))?providerFor('nlu'):(available('gemini')?'gemini':'openai');
+   fillVoices();
+ }
+ function fillVoices(){
+   const provider=providerFor('tts'),info=providerInfo('tts');
+   const select=$('aiVoiceSelect'),chosen=voiceFor(provider);
+   select.innerHTML=(info.voices||[]).map(v=>'<option value="'+v+'">'+v+' · '+providerLabel(provider)+'</option>').join('');
+   select.value=(info.voices||[]).includes(chosen)?chosen:info.defaultVoice||'';
+   if(!select.value&&select.options.length)select.selectedIndex=0;
+ }
+ for(const service of services){
+   $('aiProvider'+label[service]).addEventListener('change',event=>{
+     if(!available(event.target.value))return;
+     saveProvider(service,event.target.value);
+     $('aiModel'+label[service]).textContent=providerInfo(service)[service]||'Sin modelo';
+     setState(service,'idle','Proveedor: '+providerLabel(event.target.value)+' · Sin probar');
+     if(service==='tts')fillVoices();
+   });
+ }
  function note(text,kind='neutral'){
   const el=$('aiConfigMessage');el.textContent=text;el.dataset.kind=kind;
  }
@@ -49,19 +85,18 @@ export function setupAIDiagnostics(){
  async function load(){
   try{
    config=await call('/api/ai/config');
-   $('aiModelNlu').textContent=config.nlu;
-   $('aiModelStt').textContent=config.stt;
-   $('aiModelTts').textContent=config.tts;
-   const saved=localStorage.getItem(voiceKey);
-   $('aiVoiceSelect').value=config.voices?.includes(saved)?saved:config.defaultVoice||'marin';
-   if(config.configured){
-     $('aiConnectionState').textContent='API configurada · sin verificar modelos';
-     note('La clave está configurada en el servidor. Probá cada modelo para confirmar permisos, crédito y conectividad.');
-   }else{
-     $('aiConnectionState').textContent='Sin API Key';
-     note('La API Key no llegó al contenedor. Revisá OPENAI_API_KEY en /opt/apps/gastosapp/.env y recreá solo web. Nunca la pegues en el chat.','error');
-   }
-   for(const id of ['aiTestNetwork','aiTestNlu','aiTestStt','aiTestTts','aiTestAll','aiPreviewVoice','aiTestMicrophone'])$(id).disabled=!config.configured;
+   localStorage.setItem('gastosapp-provider-default',config.defaultProvider||'openai');
+   setProvidersUI();
+   const configured=services.filter(t=>available(providerFor(t))).length;
+   $('aiConnectionState').textContent=config.configured?
+     'Claves configuradas · '+configured+'/3 funciones listas':'Sin claves';
+   note(config.configured?'Proveedores en el servidor: '+['gemini','openai']
+     .filter(available).map(providerLabel).join(', ')+'. Probá cada función para comprobar cuotas y permisos.':
+     'No hay claves en el contenedor. Configurá GEMINI_API_KEY u OPENAI_API_KEY en .env.','neutral');
+   $('aiTestAll').disabled=!configured;
+   $('aiTestNetwork').disabled=!config.configured;
+   $('aiPreviewVoice').disabled=!available(providerFor('tts'));
+   $('aiTestMicrophone').disabled=!available(providerFor('stt'));
   }catch(error){
    $('aiConnectionState').textContent='No se pudo consultar';
    note('No pudimos leer la configuración: '+(error.error||error.message||'Error inesperado')+
@@ -73,16 +108,17 @@ export function setupAIDiagnostics(){
   busy=true;const suffix=label[service],btn=$('aiTest'+suffix);
   btn.disabled=true;setState(service,'testing','Enviando petición real a OpenAI...');
   try{
-   const result=await call('/api/ai/diagnostics/'+service,{voice:$('aiVoiceSelect').value});
-   setState(service,'ok',result.detail+' Modelo: '+result.model+' · '+result.latencyMs+' ms');
+   const provider=providerFor(service);
+   const result=await call('/api/ai/diagnostics/'+service,{provider,voice:$('aiVoiceSelect').value});
+   setState(service,'ok',providerLabel(providerFor(service))+' HTTP '+result.httpStatus+' · '+result.detail+' Modelo: '+result.model+' · '+result.latencyMs+' ms');
    return true;
   }catch(error){
-   const upstream=error.upstreamStatus?('OpenAI HTTP '+error.upstreamStatus):('GastosApp HTTP '+(error.httpStatus||'sin respuesta'));
+   const upstream=error.upstreamStatus?((error.provider==='gemini'?'Gemini HTTP ':'OpenAI HTTP ')+error.upstreamStatus):('GastosApp HTTP '+(error.httpStatus||'sin respuesta'));
    const detail=upstream+' · '+(error.code||'error_desconocido')+' · '+(error.error||'Error sin detalle')+
      (error.hint?' · SOLUCIÓN: '+error.hint:'')+
-     (error.requestId?' · OpenAI request ID: '+error.requestId:'');
+     (error.requestId?' · Proveedor request ID: '+error.requestId:'');
    setState(service,'fail',detail);
-   note('Falló '+names[service]+'. '+detail,'error');
+   note('Falló '+names[service]+' ('+providerLabel(providerFor(service))+'). '+detail,'error');
    return false;
   }finally{busy=false;btn.disabled=false;}
  }
@@ -91,7 +127,7 @@ export function setupAIDiagnostics(){
   const list=[];
   for(const service of ['nlu','stt','tts'])list.push(await testOne(service));
   const passed=list.filter(Boolean).length;
-  $('aiConnectionState').textContent=passed+'/3 modelos HTTP 200';
+  $('aiConnectionState').textContent=passed+'/3 funciones HTTP 200';
   note(passed===3?'Los tres modelos respondieron correctamente. Probá ahora tu micrófono y escuchá la voz.':
     passed+' de 3 modelos respondieron HTTP 200. Revisá debajo el error específico de cada modelo.',passed===3?'ok':'error');
   $('aiTestAll').disabled=false;
@@ -100,19 +136,20 @@ export function setupAIDiagnostics(){
   const btn=$('aiTestNetwork'),label=$('aiNetworkResult');
   btn.disabled=true;label.dataset.kind='neutral';label.textContent='Consultando OpenAI desde el contenedor (GET /v1/models). No genera audio ni texto.';
   try{
-   const result=await call('/api/ai/network');
+   const provider=$('aiNetworkProvider').value;
+   const result=await call('/api/ai/network?provider='+encodeURIComponent(provider));
    label.dataset.kind='ok';
    label.textContent='HTTP '+result.httpStatus+' · '+result.detail+' Tiempo: '+result.latencyMs+' ms.';
   }catch(error){
    label.dataset.kind='error';
-   label.textContent=(error.upstreamStatus?'OpenAI HTTP '+error.upstreamStatus:'GastosApp HTTP '+(error.httpStatus||'?'))+
+   label.textContent=(error.upstreamStatus?(error.provider==='gemini'?'Gemini HTTP ':'OpenAI HTTP ')+error.upstreamStatus:'GastosApp HTTP '+(error.httpStatus||'?'))+
     ' · '+(error.code||'error')+': '+(error.error||'Sin detalle')+
     (error.hint?' · SOLUCIÓN: '+error.hint:'');
   }finally{btn.disabled=false;}
  }
  $('aiTestNetwork').addEventListener('click',()=>void testNetwork());
  function chooseVoice(){
-  localStorage.setItem(voiceKey,$('aiVoiceSelect').value);
+  saveVoice(providerFor('tts'),$('aiVoiceSelect').value);
   voiceNote('Voz «'+$('aiVoiceSelect').value+'» elegida. Para comprobarla, tocá «Escuchar voz real». La selección también se usa en el chat.','ok');
  }
  async function previewVoice(){
@@ -121,15 +158,15 @@ export function setupAIDiagnostics(){
   if(playerUrl){URL.revokeObjectURL(playerUrl);playerUrl=null;}
   try{
    const r=await fetch('/api/chat/speech',{method:'POST',credentials:'same-origin',
-    headers:{'Content-Type':'application/json'},body:JSON.stringify({text:'Hola, ¿cómo andás? Soy tu asistente de GastosApp. Contame tus gastos y los organizamos juntos.',voice:$('aiVoiceSelect').value})});
+    headers:{'Content-Type':'application/json'},body:JSON.stringify({text:'Hola, ¿cómo andás? Soy tu asistente de GastosApp. Contame tus gastos y los organizamos juntos.',voice:$('aiVoiceSelect').value,provider:providerFor('tts')})});
    if(!r.ok){
     const error=await r.json().catch(()=>({error:'Respuesta no válida'}));
-    voiceNote((error.upstreamStatus?'OpenAI HTTP '+error.upstreamStatus:'GastosApp HTTP '+r.status)+
+    voiceNote((error.upstreamStatus?(error.provider==='gemini'?'Gemini HTTP ':'OpenAI HTTP ')+error.upstreamStatus:'GastosApp HTTP '+r.status)+
       ' · '+(error.code||'error')+': '+error.error+(error.hint?' · '+error.hint:''),'error');return;
    }
    const blob=await r.blob();playerUrl=URL.createObjectURL(blob);
    const player=$('aiVoicePlayer');player.src=playerUrl;player.classList.remove('hidden');
-   voiceNote('OpenAI HTTP 200: audio generado correctamente con voz '+$('aiVoiceSelect').value+'. Si no se reproduce automáticamente, tocá ▶ en el reproductor.','ok');
+   voiceNote(providerLabel(providerFor('tts'))+' HTTP 200: audio generado correctamente con voz '+$('aiVoiceSelect').value+'. Si no se reproduce automáticamente, tocá ▶ en el reproductor.','ok');
    try{await player.play();}catch{/* El usuario puede reproducir con controles nativos */}
   }catch(e){voiceNote('No se pudo descargar/reproducir la muestra: '+e.message+'. Revisá HTTPS, red y permisos de reproducción.');}
   finally{btn.disabled=false;}
@@ -172,7 +209,7 @@ export function setupAIDiagnostics(){
      ' KB, '+blob.type+'. Enviando al modelo de transcripción...');
     try{
      const response=await fetch('/api/voice/transcribe',{method:'POST',credentials:'same-origin',
-      headers:{'Content-Type':blob.type},body:blob});
+      headers:{'Content-Type':blob.type,'X-AI-Provider':providerFor('stt')},body:blob});
      const result=await response.json().catch(()=>({error:'Respuesta no JSON'}));
      if(!response.ok){
       micMessage((result.upstreamStatus?'OpenAI HTTP '+result.upstreamStatus:'GastosApp HTTP '+response.status)+

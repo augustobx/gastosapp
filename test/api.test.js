@@ -17,7 +17,7 @@ test('HTTP: protección, medios, cuotas, recurrentes y confirmación de pago',as
  const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'gastosapp-test-'));
  const app=spawn(process.execPath,['server.js'],{cwd:process.cwd(),
    env:{...process.env,PORT:String(port),NODE_ENV:'production',APP_PASSWORD:'test-secret-long-password',
-     DATA_DIR:tmp,OPENAI_API_KEY:''},stdio:['ignore','pipe','pipe']});
+     DATA_DIR:tmp,OPENAI_API_KEY:'',GEMINI_API_KEY:''},stdio:['ignore','pipe','pipe']});
  let err='';app.stderr.on('data',b=>{err+=String(b)});
  t.after(()=>{app.kill();fs.rmSync(tmp,{force:true,recursive:true});});
  const base='http://127.0.0.1:'+port;
@@ -46,11 +46,24 @@ test('HTTP: protección, medios, cuotas, recurrentes y confirmación de pago',as
   const aiConfig=await get('/api/ai/config','GET',null,cookie);
  assert.equal(aiConfig.code,200);
  assert.equal(aiConfig.json.data.configured,false);
+ assert.equal(aiConfig.json.data.providers.gemini.configured,false);
+ assert.equal(aiConfig.json.data.providers.gemini.nlu,'gemini-3.8-flash');
+ assert.equal(aiConfig.json.data.providers.gemini.stt,'gemini-3.8-flash');
+ assert.equal(aiConfig.json.data.providers.gemini.tts,'gemini-3.8-flash-tts');
  assert.equal(aiConfig.json.data.stt,'gpt-4o-mini-transcribe');
  assert.ok(Array.isArray(aiConfig.json.data.voices));
  const probe=await get('/api/ai/diagnostics/stt','POST',{},cookie);
  assert.equal(probe.code,503);
  assert.equal(probe.json.code,'missing_key');
+ const geminiProbe=await get('/api/ai/diagnostics/tts','POST',{provider:'gemini',voice:'Kore'},cookie);
+ assert.equal(geminiProbe.code,503);
+ assert.equal(geminiProbe.json.code,'missing_gemini_key');
+ const geminiNetwork=await get('/api/ai/network?provider=gemini','GET',null,cookie);
+ assert.equal(geminiNetwork.code,503);
+ const geminiTurn=await get('/api/chat/turn','POST',{text:'gasto 15 mil',provider:'gemini',items:[]},cookie);
+ assert.equal(geminiTurn.code,503);
+ const geminiSpeech=await get('/api/chat/speech','POST',{text:'Hola',provider:'gemini',voice:'Kore'},cookie);
+ assert.equal(geminiSpeech.code,503);
  const speechWithoutKey=await get('/api/chat/speech','POST',{text:'Hola, ¿cómo va?'},cookie);
  assert.equal(speechWithoutKey.code,503);
  const initial=(await get('/api/state?month=2026-11','GET',null,cookie)).json.data;

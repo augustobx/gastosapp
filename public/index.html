@@ -10,8 +10,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/app.css?v=9">
-  <script defer type="module" src="/app.js?v=9"></script>
+  <link rel="stylesheet" href="/app.css?v=10">
+  <script defer type="module" src="/app.js?v=10"></script>
   <title>GastosApp · Mis finanzas</title>
 </head>
 <body>
@@ -85,15 +85,22 @@
 
           <section class="panel ai-settings-panel" id="aiSettingsPanel" aria-label="Diagnóstico de inteligencia artificial">
             <div class="ai-settings-heading">
-              <div><span class="eyebrow">CENTRO DE DIAGNÓSTICO</span><h3>Conexión con OpenAI</h3>
-                <p>Verificá cada modelo por separado. Mostramos el HTTP real que devuelve OpenAI, el código de error y cómo solucionarlo.</p></div>
+              <div><span class="eyebrow">CENTRO DE DIAGNÓSTICO</span><h3>OpenAI y Google Gemini</h3>
+                <p>Seleccioná el proveedor por función, probá cada modelo y usá la voz que más te guste. Ninguna clave API se expone en la app.</p></div>
               <span id="aiConnectionState" class="ai-status-tag">Sin verificar</span>
             </div>
-            <div id="aiConfigMessage" class="ai-notice" role="status">Cargando configuración de los modelos...</div>
+            <div id="aiConfigMessage" class="ai-notice" role="status">Cargando proveedores...</div>
+            <div class="ai-provider-options">
+              <label>Proveedor para conversación<select id="aiProviderNlu"><option value="gemini">Gemini</option><option value="openai">OpenAI</option></select></label>
+              <label>Proveedor para transcripción<select id="aiProviderStt"><option value="gemini">Gemini</option><option value="openai">OpenAI</option></select></label>
+              <label>Proveedor para voz natural<select id="aiProviderTts"><option value="gemini">Gemini</option><option value="openai">OpenAI</option></select></label>
+            </div>
+            <p class="ai-fineprint">Podés combinar los proveedores. Por ejemplo, interpretar con Gemini y generar la voz con OpenAI. Se usan únicamente los modelos configurados y admitidos por cada proveedor.</p>
             <div class="ai-network-check">
               <strong>Primero: comprobar conexión real desde el servidor</strong>
-              <p>Esta prueba comprueba acceso a api.openai.com y validez de tu clave, sin generar texto ni audio. Si pasa, seguimos con los modelos.</p>
-              <button id="aiTestNetwork" type="button" class="btn btn-muted">Probar conexión OpenAI (sin generación)</button>
+              <p>Esta prueba verifica conectividad y autenticación, sin generar texto ni voz.</p>
+              <label>Proveedor de la prueba<select id="aiNetworkProvider"><option value="gemini">Gemini</option><option value="openai">OpenAI</option></select></label>
+              <button id="aiTestNetwork" type="button" class="btn btn-muted">Probar conexión (sin generación)</button>
               <div id="aiNetworkResult" class="ai-notice" role="status">Sin probar.</div>
             </div>
             <div class="ai-diagnostic-table">
@@ -124,13 +131,7 @@
             </div>
             <div class="ai-voice-config">
               <label>Voz natural preferida
-                <select id="aiVoiceSelect">
-                  <option value="marin">Marin · natural y cercana</option><option value="cedar">Cedar · cálida y grave</option>
-                  <option value="coral">Coral · expresiva</option><option value="nova">Nova</option>
-                  <option value="alloy">Alloy</option><option value="sage">Sage</option>
-                  <option value="shimmer">Shimmer</option><option value="verse">Verse</option>
-                  <option value="ash">Ash</option><option value="ballad">Ballad</option><option value="echo">Echo</option>
-                </select>
+                <select id="aiVoiceSelect"><option value="Kore">Kore · Gemini</option></select>
               </label>
               <button id="aiPreviewVoice" type="button" class="btn btn-muted">▶ Escuchar voz real</button>
               <audio id="aiVoicePlayer" controls class="hidden" preload="none" aria-label="Muestra de voz"></audio>
