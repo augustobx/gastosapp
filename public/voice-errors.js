@@ -16,7 +16,7 @@ export async function voiceFailure(response,operation='Voz natural'){
  const code=String(body.code||(backend?'server_non_json':'gateway_non_json'));
  const detail=String(body.error||body.message||(text?clean(text):'El servidor devolvió una respuesta vacía.'));
  const hint=body.hint||(!backend&&[502,503,504].includes(status)?
-  'El proxy devolvió '+type+'. Revisá docker logs --tail 60 gastosapp-web y los registros de Nginx Proxy Manager.':
+  'El proxy devolvió Content-Type: '+type+'. Revisá docker logs --tail 60 gastosapp-web y los registros de Nginx Proxy Manager.':
   'Abrí Configuración y probá la voz natural; revisá los logs de gastosapp-web.');
  const error=new Error(operation+': '+where+' · '+code+' · '+detail+
    (hint?' · SOLUCIÓN: '+hint:'')+
