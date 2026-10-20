@@ -97,7 +97,7 @@ async function aiInterpret(text, accounts, draft) {
   if(!process.env.OPENAI_API_KEY)return draft;
   const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),16000);
   try{
-    const prompt='Interpretá español rioplatense y lunfardo para registrar finanzas. Respondé SOLO JSON con campos type (income|expense),title,amount,date (YYYY-MM-DD),dueDate (YYYY-MM-DD o null),category,installmentCount,mentionedMethod,isPaid,isRecurring. date es la fecha de registro u operación, dueDate es el vencimiento o día en que se pagará. Frases como "a fin de mes", "lo pago el 25" son vencimientos futuros y NO significan pago realizado. "pago único" significa una sola cuota, no que esté pagado. "cargar a Juanma" significa gasto a nombre de Juanma. Nunca confundir fecha de registro con vencimiento. "lucas"=1000 pesos, "palos"=1000000 pesos, "gambas"=100 pesos; "6 cuotas de 20 mil" es importe POR CUOTA, "120 mil en 6 cuotas" es monto TOTAL. No inventes datos. Fecha actual: '+isoDay(new Date())+'. Medios disponibles: '+accounts.map(a=>a.name).join(', ')+'.';
+    const prompt='Interpretá español rioplatense y lunfardo para registrar finanzas. Respondé SOLO JSON con campos type (income|expense),title,amount,date (YYYY-MM-DD),dueDate (YYYY-MM-DD o null),category,installmentCount,mentionedMethod,isPaid,isRecurring. date es la fecha de registro u operación, dueDate es el vencimiento o día en que se pagará. Frases como "a fin de mes", "lo pago el 25" son vencimientos futuros y NO significan pago realizado. "pago único" significa una sola cuota, no que esté pagado. "cargar a Juanma" significa gasto a nombre de Juanma. Nunca confundir fecha de registro con vencimiento. "lucas"=1000 pesos, "palos"=1000000 pesos, "gambas"=100 pesos. El reconocimiento de voz separa miles: "890 000" significa 890000 ARS y "1 200 000" significa 1200000 ARS. "Para cancelar el crédito" es un gasto de deuda/préstamo, NO pago con tarjeta de crédito ni medio de pago; no inventar tarjeta ni medio si no se menciona explícitamente. Categoría Deudas y préstamos. "Pago de crédito · Juanma" es un título apropiado cuando dice "a Juanma para cancelar el crédito"; "6 cuotas de 20 mil" es importe POR CUOTA, "120 mil en 6 cuotas" es monto TOTAL. No inventes datos. Fecha actual: '+isoDay(new Date())+'. Medios disponibles: '+accounts.map(a=>a.name).join(', ')+'.';
     const response=await fetch('https://api.openai.com/v1/chat/completions',{
       method:'POST',signal:controller.signal,
       headers:{Authorization:'Bearer '+process.env.OPENAI_API_KEY,'Content-Type':'application/json'},
@@ -110,7 +110,14 @@ async function aiInterpret(text, accounts, draft) {
     const updated={...draft};
     if(['income','expense'].includes(result.type))updated.type=result.type;
     if(typeof result.title==='string'&&result.title.trim())updated.title=result.title.trim().slice(0,140);
-    if(Number.isFinite(Number(result.amount))&&Number(result.amount)>0)updated.amount=Math.round(Number(result.amount)*100)/100;
+    if(Number.isFinite(Number(result.amount))&&Number(result.amount)>0){
+      const aiAmount=Math.round(Number(result.amount)*100)/100;
+      // No degradar miles reconocidos localmente por una interpretación dudosa de la IA.
+      if(draft.amount === null || aiAmount === draft.amount) updated.amount=aiAmount;
+      else if(/\b\d{1,3}(?:[ \u00a0\u202f]+\d{3})+\b/.test(text)){
+        updated.questions.push('La IA propuso otro importe; se conservó el valor completo detectado en el dictado.');
+      }else updated.amount=aiAmount;
+    }
     if(/^\d{4}-\d{2}-\d{2}$/.test(result.date||''))updated.date=result.date;
     if(result.dueDate===null || /^\d{4}-\d{2}-\d{2}$/.test(result.dueDate||''))updated.dueDate=result.dueDate;
     if(typeof result.category==='string')updated.category=result.category.slice(0,60);
@@ -118,6 +125,14 @@ async function aiInterpret(text, accounts, draft) {
       updated.installmentCount=result.installmentCount;
     if(typeof result.isPaid==='boolean')updated.isPaid=result.isPaid;
     if(typeof result.isRecurring==='boolean')updated.isRecurring=result.isRecurring;
+    // El propósito de cancelar una deuda no es una instrucción de usar una tarjeta.
+    if(/\b(?:cancelar|saldar|liquidar)\b.{0,55}\b(?:cr[eé]dito|pr[eé]stamo|deuda)\b/i.test(text) &&
+      !/\b(?:con (?:la )?tarjeta|con (?:la )?visa|con (?:la )?master|con d[eé]bito|con mercado pago|con mp)\b/i.test(text)){
+      updated.accountId=null;updated.mentionedMethod=null;
+      updated.category='Deudas y préstamos';
+    }
+    if(updated.dueDate && !draft.isPaid && !/\b(ya pagu[eé]|lo pagu[eé]|ya est[aá] pagado)\b/i.test(text))
+      updated.isPaid=false;
     if(updated.dueDate && /\b(a fin de mes|fin de mes|fin del mes|lo pago|voy a pagar|vence|vencimiento)\b/i.test(text) &&
        !/\b(ya pagu[eé]|ya est[aá] pagado|lo pagu[eé])\b/i.test(text))updated.isPaid=false;
     if(typeof result.mentionedMethod==='string'&&result.mentionedMethod.trim()){

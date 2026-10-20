@@ -70,3 +70,9 @@ Reutiliza el contenedor gastosapp-web y la red proxy del Nginx Proxy Manager. Re
 Ejecutar npm test y probar manualmente PC, Chrome Android, Safari iOS, instalación PWA, reconexión, micrófono y cierre/renovación de sesión.
 
 Endpoints principales: GET /api/state?month=YYYY-MM; POST /api/transactions; PATCH /api/paid/:id; POST /api/interpret; POST /api/voice/transcribe; POST /api/accounts; PATCH /api/settings; GET /api/export.
+
+## Dictado de importes con espacios y deudas
+
+- Frases como «890 000 a Juanma para cancelar el crédito a fin de mes» se interpretan como $890.000, categoría Deudas y préstamos, vencimiento de fin de mes y pendiente.
+- «Crédito» en «cancelar el crédito» describe una deuda, no un medio de pago. No se crea una compra financiada en tarjeta salvo que se indique explícitamente.
+- Un medio de pago omitido puede quedar sin especificar y completarse después.
