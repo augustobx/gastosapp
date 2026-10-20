@@ -34,10 +34,16 @@ test('HTTP: protección, medios, cuotas, recurrentes y confirmación de pago',as
    return {code:r.status,cookie:r.headers.get('set-cookie'),json:await r.json()};
  };
  assert.equal((await get('/api/state')).code,401);
+ assert.equal((await get('/api/ai/usage')).code,401);
  assert.equal((await get('/api/login','POST',{password:'mala'})).code,401);
  const login=await get('/api/login','POST',{password:'test-secret-long-password'});
  assert.equal(login.code,200);
  const cookie=login.cookie.split(';')[0];
+ const usageReport=await get('/api/ai/usage?period=today','GET',null,cookie);
+ assert.equal(usageReport.code,200);
+ assert.equal(usageReport.json.data.summary.requests,0);
+ assert.equal(usageReport.json.data.pricingMode,'paid_equivalent_not_actual_bill');
+ assert.deepEqual(usageReport.json.data.models,[]);
  const aiWithoutKey=await get('/api/chat/turn','POST',{text:'Cargar un gasto',items:[],phase:'collect'},cookie);
  assert.equal(aiWithoutKey.code,503);
  const network=await get('/api/ai/network','GET',null,cookie);

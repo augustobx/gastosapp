@@ -10,6 +10,7 @@ import { VOICES,callOpenAI,makeSpeechBody,publicError,diagnostics,networkDiagnos
 import { GEMINI_MODELS,GEMINI_VOICES,geminiChatTurn,geminiTranscribe,geminiSpeech,geminiNetwork,geminiDiagnostic } from './lib/gemini.js';
 import {makeJobs} from './lib/ai-jobs.js';
 import {createSpeechJobs} from './lib/speech-jobs.js';
+import {usageLedger} from './lib/ai-usage.js';
 
 const port=Number(process.env.PORT||3000);
 const password=process.env.APP_PASSWORD||'';
@@ -95,6 +96,7 @@ const wrap=fn=>async(req,res)=>{try{const value=await fn(req,res);if(!res.header
   catch(e){const detail=publicError(e);console.error('API',req.path,detail.code,detail.upstreamStatus||'',detail.error);
     if(!res.headersSent)res.status(e.status||400).json(detail);}};
 app.get('/api/ai/tasks/:id',limited(50),wrap(req=>aiJobs.get(jobOwner(req),req.params.id)));
+app.get('/api/ai/usage',limited(45),wrap(req=>usageLedger.report(['today','month','all'].includes(req.query.period)?req.query.period:'month')));
 app.get('/api/state',wrap(req=>store.snapshot(req.query.month||monthOf(isoDay(new Date())))));
 app.patch('/api/settings',wrap(req=>store.settings(req.body)));
 app.post('/api/accounts',wrap(req=>store.addAccount(req.body)));
@@ -165,13 +167,12 @@ async function aiInterpret(text, accounts, draft) {
   const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),16000);
   try{
     const prompt='Interpretá español rioplatense y lunfardo para registrar finanzas. Respondé SOLO JSON con campos type (income|expense),title,amount,date (YYYY-MM-DD),dueDate (YYYY-MM-DD o null),category,installmentCount,mentionedMethod,isPaid,isRecurring. date es la fecha de registro u operación, dueDate es el vencimiento o día en que se pagará. Frases como "a fin de mes", "lo pago el 25" son vencimientos futuros y NO significan pago realizado. "pago único" significa una sola cuota, no que esté pagado. "cargar a Juanma" significa gasto a nombre de Juanma. Nunca confundir fecha de registro con vencimiento. "lucas"=1000 pesos, "palos"=1000000 pesos, "gambas"=100 pesos. El reconocimiento de voz separa miles: "890 000" significa 890000 ARS y "1 200 000" significa 1200000 ARS. "Para cancelar el crédito" es un gasto de deuda/préstamo, NO pago con tarjeta de crédito ni medio de pago; no inventar tarjeta ni medio si no se menciona explícitamente. Categoría Deudas y préstamos. "Pago de crédito · Juanma" es un título apropiado cuando dice "a Juanma para cancelar el crédito"; "6 cuotas de 20 mil" es importe POR CUOTA, "120 mil en 6 cuotas" es monto TOTAL. No inventes datos. Fecha actual: '+isoDay(new Date())+'. Medios disponibles: '+accounts.map(a=>a.name).join(', ')+'.';
-    const response=await fetch('https://api.openai.com/v1/chat/completions',{
-      method:'POST',signal:controller.signal,
-      headers:{Authorization:'Bearer '+process.env.OPENAI_API_KEY,'Content-Type':'application/json'},
+    const response=await callOpenAI('https://api.openai.com/v1/chat/completions',{
+      key:process.env.OPENAI_API_KEY,timeoutMs:16000,
+      headers:{'Content-Type':'application/json'},
       body:JSON.stringify({model:process.env.OPENAI_NLU_MODEL||'gpt-4o-mini',temperature:0,
         response_format:{type:'json_object'},messages:[{role:'system',content:prompt},{role:'user',content:text}]})
     });
-    if(!response.ok)throw new Error('No se pudo procesar con IA');
     const payload=await response.json();
     const result=JSON.parse(payload.choices?.[0]?.message?.content||'{}');
     const updated={...draft};

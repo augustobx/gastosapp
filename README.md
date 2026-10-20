@@ -199,3 +199,19 @@ Para no mantener conexiones Cloudflare/Nginx abiertas mientras sintetiza, el cha
 HTTP 429 con cuota diaria agotada no se reintenta automáticamente. La PWA muestra el mensaje real, suspende la reproducción automática hasta que el usuario elija reintentar y mantiene la conversación escrita operativa. Para tener voz disponible en uso cotidiano hay que esperar al reinicio de cuota o habilitar un nivel de facturación adecuado; el cambio de endpoint no aumenta la cuota gratuita. No se activan proveedores de pago silenciosamente.
 
 Pruebas unitarias y HTTP: cola, resultado pendiente/completado/fallido, aislamiento de sesión, ausencia de datos de audio en JSON, deduplicación de muestras, subida de WAV y 429 real sin consumir la clave del usuario. No modificar Nginx Proxy Manager ni el resto de contenedores.
+
+## Uso, tokens y costos de IA (PWA v15)
+
+Configuración incorpora un módulo de consumo por día, mes y desde la activación, con totales por proveedor, modelo y función. Muestra solicitudes exitosas/fallidas, tokens de entrada, salida y razonamiento cuando lo informa cada API, y costo EQUIVALENTE A TARIFA DE PAGO EN USD. Este importe es una **estimación parcial, no es saldo ni factura real**; para usuarios Gemini Free Tier el costo real puede ser cero. Tampoco incluye actividad realizada desde otras apps que utilicen la misma clave. Los resultados sin datos de tokens se marcan "sin medir", sin inventar cantidades.
+
+Persistencia: contadores agregados y alertas en `/app/data/ai-usage.json` en el volumen Docker existente `gastosapp-data`, con reemplazo atómico y permisos del archivo 0600. No registra textos financieros, claves ni bytes de audios. El historial empieza al desplegar esta versión: no se inventan tokens de pruebas anteriores.
+
+Fuentes y esquema:
+- Google `usageMetadata.promptTokenCount`, `candidatesTokenCount`, `thoughtsTokenCount`: https://ai.google.dev/api/generate-content
+- Gemini Interactions `usage.total_input_tokens`, `usage.total_output_tokens`: https://ai.google.dev/api/interactions-api
+- OpenAI chat `usage.prompt_tokens` y `completion_tokens`: https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create
+- Tarifas pagas verificadas el 20/10/2026: https://ai.google.dev/gemini-api/docs/pricing y https://developers.openai.com/api/docs/pricing . Las tarifas de Gemini 3.8 y 3.6 Flash/TTS son introductorias hasta 31/12/2026; deben revisarse en 2027. El valor de caché se estima con tarifa normal, por lo que el USD mostrado puede sobreestimar cargos reales. No se descuentan promociones ni cuotas gratuitas.
+
+Alertas de uso: clasifica HTTP 429 con "requests per day / Free Tier" como **cuota gratuita diaria agotada** (no "sin saldo"); los códigos `credit_balance_exhausted` / `insufficient_quota` / mensajes de facturación como **créditos o facturación agotados**; rate limit temporal, saturación HTTP 503 y problemas de permisos como causas diferentes. Reporta última incidencia y su renovación si Google la informa; no afirma que un error pasado siga vigente.
+
+Se contabilizan llamadas realizadas por GastosApp a Gemini mediante `generateContent` e `Interactions`, y a OpenAI mediante chat, STT y TTS. TTS binario de OpenAI normalmente no comunica tokens en esa respuesta; cuenta la solicitud pero deja tokens y costo como no medidos. Tests de cálculos, persistencia, privacidad, categorías, temporalidad y API autenticada. No modificar otros contenedores ni borrar el volumen de datos. No se requiere configurar variables .env adicionales.
