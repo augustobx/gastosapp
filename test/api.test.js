@@ -38,6 +38,10 @@ test('HTTP: protección, medios, cuotas, recurrentes y confirmación de pago',as
  const login=await get('/api/login','POST',{password:'test-secret-long-password'});
  assert.equal(login.code,200);
  const cookie=login.cookie.split(';')[0];
+ const aiWithoutKey=await get('/api/chat/turn','POST',{text:'Cargar un gasto',items:[],phase:'collect'},cookie);
+ assert.equal(aiWithoutKey.code,503);
+ const speechWithoutKey=await get('/api/chat/speech','POST',{text:'Hola, ¿cómo va?'},cookie);
+ assert.equal(speechWithoutKey.code,503);
  const initial=(await get('/api/state?month=2026-11','GET',null,cookie)).json.data;
  assert.equal(initial.accounts.some(a=>a.id==='visa'),true);
  let added=await get('/api/transactions','POST',{

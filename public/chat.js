@@ -1,4 +1,4 @@
-// Asistente conversacional sin servicios de diálogo pagos.
+// Asistente conversacional: IA optativa para comprensión, voz y transcripción.
 // Ningún movimiento se guarda hasta confirmar toda la tanda.
 export function setupChat({request,refresh,getAccounts,fmt,dateLabel,hasAI,openQuick}){
  const $=id=>document.getElementById(id);
@@ -7,7 +7,7 @@ export function setupChat({request,refresh,getAccounts,fmt,dateLabel,hasAI,openQ
  const cats=['Comida','Servicios','Hogar','Transporte','Salud','Educación','Tecnología','Entretenimiento','Indumentaria','Deudas y préstamos','Otros','Extra','Sueldo','Ventas'];
  const dlg=$('chatDialog'),messages=$('chatMessages'),review=$('chatReview'),editor=$('chatEditor');
  const chat={items:[],pending:null,editIndex:null,returnPhase:'collect',phase:'collect',busy:false,
-   closed:true,speaker:null,recognizer:null,recorder:null,stream:null,chunks:[],key:null};
+   closed:true,speaker:null,voiceAbort:null,voiceUrl:null,voiceSeq:0,unresolved:null,recognizer:null,recorder:null,stream:null,chunks:[],key:null};
  const account=id=>getAccounts().find(a=>a.id===id);
  const welcome='Dale, decime el primer gasto o ingreso. Cuando termines, decí "nada más". Después los repasamos juntos.';
  const key=()=>Date.now().toString(36)+'-'+(crypto.randomUUID?.()||Math.random().toString(36).slice(2));
@@ -16,20 +16,58 @@ export function setupChat({request,refresh,getAccounts,fmt,dateLabel,hasAI,openQ
    messages.append(el);messages.scrollTop=messages.scrollHeight;
  }
  function status(value){$('chatStatus').textContent=value;}
- function stopVoice(){if('speechSynthesis' in window)window.speechSynthesis.cancel();chat.speaker=null;}
- function say(value){
-   bubble('assistant',value);
-   if(!$('chatSpeak').checked||!window.speechSynthesis)return;
-   stopVoice();
-   const u=new SpeechSynthesisUtterance(value);u.lang='es-AR';u.rate=1.03;
+ function stopVoice(){
+   chat.voiceSeq++;
+   chat.voiceAbort?.abort();chat.voiceAbort=null;
+   if(chat.speaker?.pause){chat.speaker.pause();chat.speaker.src='';}
+   if('speechSynthesis' in window)window.speechSynthesis.cancel();
+   if(chat.voiceUrl)URL.revokeObjectURL(chat.voiceUrl);
+   chat.voiceUrl=null;chat.speaker=null;
+ }
+ function listenAfterSpeech(seq){
+   if(seq!==chat.voiceSeq||chat.closed||chat.busy||!$('chatHandsFree').checked||chat.phase==='edit'||chat.phase==='saved')return;
+   startMic();
+ }
+ function fallbackVoice(message,seq){
+   if(!('speechSynthesis' in window)||seq!==chat.voiceSeq)return;
+   const utterance=new SpeechSynthesisUtterance(message);utterance.lang='es-AR';utterance.rate=1.03;
    const voices=window.speechSynthesis.getVoices();
-   u.voice=voices.find(v=>v.lang.toLowerCase()==='es-ar')||voices.find(v=>v.lang.toLowerCase().startsWith('es'))||null;
-   chat.speaker=u;
-   u.onend=()=>{if(chat.speaker!==u)return;chat.speaker=null;
-     if(!chat.closed&&!chat.busy&&$('chatHandsFree').checked&&chat.phase!=='edit'&&chat.phase!=='saved')startMic();
-   };
-   u.onerror=()=>{if(chat.speaker===u)chat.speaker=null;};
-   try{window.speechSynthesis.speak(u);}catch{}
+   utterance.voice=voices.find(v=>v.lang.toLowerCase()==='es-ar')||
+     voices.find(v=>v.lang.toLowerCase().startsWith('es'))||null;
+   chat.speaker=utterance;
+   utterance.onend=()=>{if(chat.speaker===utterance){chat.speaker=null;listenAfterSpeech(seq);}};
+   try{window.speechSynthesis.speak(utterance);}catch{}
+ }
+ function say(message){
+   bubble('assistant',message);
+   stopVoice();
+   if(!$('chatSpeak').checked)return;
+   const seq=chat.voiceSeq;
+   if(!hasAI()||!$('chatNaturalVoice').checked){
+     fallbackVoice(message,seq);return;
+   }
+   const abort=new AbortController();chat.voiceAbort=abort;
+   void(async()=>{
+     try{
+       const response=await fetch('/api/chat/speech',{method:'POST',credentials:'same-origin',
+         headers:{'Content-Type':'application/json'},body:JSON.stringify({text:String(message).slice(0,620)}),
+         signal:abort.signal});
+       if(!response.ok)throw new Error('Voz IA no disponible');
+       const audioBlob=await response.blob();
+       if(abort.signal.aborted||seq!==chat.voiceSeq||chat.closed)return;
+       const url=URL.createObjectURL(audioBlob);chat.voiceUrl=url;
+       const audio=new Audio(url);chat.speaker=audio;
+       audio.onended=()=>{if(chat.speaker===audio){chat.speaker=null;
+         URL.revokeObjectURL(url);chat.voiceUrl=null;listenAfterSpeech(seq);}};
+       audio.onerror=()=>{if(seq===chat.voiceSeq){status('Audio de IA no disponible; usando la voz del navegador.');
+         fallbackVoice(message,seq);}};
+       await audio.play();
+     }catch(error){
+       if(error.name==='AbortError'||seq!==chat.voiceSeq||chat.closed)return;
+       status('No se pudo reproducir la voz natural. Uso la voz del navegador.');
+       fallbackVoice(message,seq);
+     }finally{if(chat.voiceAbort===abort)chat.voiceAbort=null;}
+   })();
  }
  function stopMic(){
    if(chat.recognizer){const rec=chat.recognizer;chat.recognizer=null;rec.onend=null;rec.abort();}
@@ -39,7 +77,7 @@ export function setupChat({request,refresh,getAccounts,fmt,dateLabel,hasAI,openQ
  }
  function reset(){
    stopMic();stopVoice();
-   chat.items=[];chat.pending=null;chat.editIndex=null;chat.phase='collect';chat.busy=false;chat.key=key();
+   chat.items=[];chat.pending=null;chat.unresolved=null;chat.editIndex=null;chat.phase='collect';chat.busy=false;chat.key=key();
    messages.replaceChildren();review.classList.add('hidden');editor.classList.add('hidden');
    $('chatInput').value='';status('Podés hablar o escribir.');say(welcome);
  }
@@ -47,7 +85,11 @@ export function setupChat({request,refresh,getAccounts,fmt,dateLabel,hasAI,openQ
  function open(){
    if(!dlg.open)dlg.showModal();
    chat.closed=false;
-   $('chatAIOption').classList.toggle('hidden',!hasAI());
+   const enabled=hasAI();
+   $('chatAIOption').classList.toggle('hidden',!enabled);
+   $('chatNaturalOption').classList.toggle('hidden',!enabled);
+   $('chatBetterSTTOption').classList.toggle('hidden',!enabled);
+   $('chatAI').checked=enabled;
    if(!chat.items.length||chat.phase==='saved')reset();
  }
  function describe(t,i){
@@ -137,6 +179,45 @@ export function setupChat({request,refresh,getAccounts,fmt,dateLabel,hasAI,openQ
    }catch(e){say('No pude guardar: '+e.message+'. La tanda continúa pendiente de confirmación.');status('No se guardó la tanda.');}
    finally{chat.busy=false;}
  }
+ async function processAIMessage(text){
+   chat.busy=true;status('La IA está interpretando lo que dijiste...');
+   try{
+     const query=chat.unresolved?'Mensaje anterior pendiente: '+chat.unresolved+'. Aclaración: '+text:text;
+     const r=await request('/api/chat/turn','POST',{text:query,phase:chat.phase,items:chat.items});
+     const action=r.action;
+     if(action==='add'){
+       chat.unresolved=null;chat.items.push(...r.items);chat.phase='collect';renderReview();
+       say((r.reply||'Listo.')+' Quedaron '+chat.items.length+' movimientos sin guardar. ¿Hay algo más?');
+     }else if(action==='edit'){
+       chat.unresolved=null;chat.items[r.index]=r.items[0];chat.phase='collect';renderReview();
+       say((r.reply||'Corregido.')+' ¿Querés agregar algo o repasamos todo?');
+     }else if(action==='remove'){
+       chat.unresolved=null;chat.items.splice(r.index,1);chat.phase='collect';renderReview();
+       say(r.reply||'Listo, quité ese movimiento.');
+     }else if(action==='review'){
+       chat.unresolved=null;summarize();
+     }else if(action==='confirm'){
+       const affirmative=/\b(si|guard[a-z]*|confirm[a-z]*|correcto|dale|perfecto|estan bien|todo bien)\b/.test(norm(text));
+       if(chat.phase==='confirm'&&affirmative){
+         // La confirmación explícita es obligatoria aunque el modelo diga "confirm".
+         chat.busy=false;await saveBatch();return;
+       }
+       if(chat.items.length)summarize();
+       else say('Todavía no hay gastos. Contame qué querés anotar.');
+     }else if(action==='reset'){
+       chat.items=[];chat.unresolved=null;chat.key=key();chat.phase='collect';renderReview();
+       say('Descarté la tanda sin registrar nada. '+r.reply);
+     }else if(action==='clarify'){
+       chat.unresolved=text;say(r.reply||'Me falta un dato. ¿Me lo aclarás?');
+     }else{
+       say(r.reply||'Te escucho, contame los gastos como te salgan.');
+     }
+   }catch(error){
+     // Nunca transformar una falla de IA en un registro local incorrecto.
+     status('No se pudo interpretar. Podés reintentar, no se guardó nada.');
+     say('No pude interpretar esa frase: '+error.message+' Podés repetirla; no guardé nada.');
+   }finally{chat.busy=false;}
+ }
  async function processMessage(raw){
    const text=String(raw||'').trim();if(!text||chat.busy)return;
    stopVoice();bubble('user',text);$('chatInput').value='';
@@ -146,6 +227,7 @@ export function setupChat({request,refresh,getAccounts,fmt,dateLabel,hasAI,openQ
      if(intro.test(cmd)||more.test(cmd))return say(welcome);
    }
    if(chat.phase==='edit')return say('Terminá de completar el formulario de edición para continuar.');
+   if(hasAI()&&$('chatAI').checked)return processAIMessage(text);
    if(chat.phase==='confirm'){
      if(yes.test(cmd))return saveBatch();
      if(no.test(cmd))return say('Claro. Tocá Editar junto al movimiento que quieras corregir.');
@@ -177,7 +259,7 @@ export function setupChat({request,refresh,getAccounts,fmt,dateLabel,hasAI,openQ
    if(chat.closed||chat.busy||chat.phase==='saved'||chat.phase==='edit'||chat.recognizer||chat.recorder)return;
    stopVoice();
    const Speech=window.SpeechRecognition||window.webkitSpeechRecognition;
-   if(Speech){
+   if(Speech && !(hasAI()&&$('chatBetterSTT').checked&&!$('chatHandsFree').checked)){
      const rec=new Speech();chat.recognizer=rec;rec.lang='es-AR';rec.continuous=false;rec.interimResults=true;
      let result='';
      rec.onresult=e=>{result=Array.from(e.results).map(r=>r[0].transcript).join(' ').trim();$('chatInput').value=result;};
@@ -244,6 +326,7 @@ export function setupChat({request,refresh,getAccounts,fmt,dateLabel,hasAI,openQ
    if(e.target.closest('#chatSaveAll')){if(chat.phase==='confirm')void saveBatch();else summarize();}
  });
  $('chatSpeak').addEventListener('change',()=>{if(!$('chatSpeak').checked)stopVoice();});
+ $('chatNaturalVoice').addEventListener('change',()=>stopVoice());
  $('chatHandsFree').addEventListener('change',()=>{
    if($('chatHandsFree').checked&&!(window.SpeechRecognition||window.webkitSpeechRecognition)){
      $('chatHandsFree').checked=false;

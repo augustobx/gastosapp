@@ -1,4 +1,4 @@
-import { setupChat } from './chat.js?v=6';
+import { setupChat } from './chat.js?v=7';
 const $ = id => document.getElementById(id);
 const $$ = selector => [...document.querySelectorAll(selector)];
 const fmt = n => new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS',maximumFractionDigits:2}).format(Number(n||0));
