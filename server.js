@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { store } from './db.js';
 import { interpret, isoDay, monthOf } from './lib/engine.js';
+import { aiChatTurn } from './lib/ai-chat.js';
 
 const port=Number(process.env.PORT||3000);
 const password=process.env.APP_PASSWORD||'';
@@ -157,6 +158,40 @@ app.post('/api/interpret',limited(30),wrap(async req=>{
   }
   return draft;
 }));
+app.post('/api/chat/turn',limited(20),wrap(async req=>{
+  const accounts=store.snapshot().accounts;
+  const items=Array.isArray(req.body?.items)?req.body.items:[];
+  const phase=['collect','confirm','edit'].includes(req.body?.phase)?req.body.phase:'collect';
+  return aiChatTurn({
+    text:req.body?.text,items,accounts,phase,
+    key:process.env.OPENAI_API_KEY,model:process.env.OPENAI_NLU_MODEL||'gpt-4o-mini'
+  });
+}));
+app.post('/api/chat/speech',limited(16),async(req,res)=>{
+  if(!process.env.OPENAI_API_KEY)return res.status(503).json({error:'Falta configurar la clave API.'});
+  const text=String(req.body?.text||'').trim();
+  if(!text||text.length>620)return res.status(400).json({error:'Texto de voz fuera de límite (620 caracteres).'});
+  const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),24000);
+  try{
+    const response=await fetch('https://api.openai.com/v1/audio/speech',{
+      method:'POST',signal:controller.signal,
+      headers:{Authorization:'Bearer '+process.env.OPENAI_API_KEY,'Content-Type':'application/json'},
+      body:JSON.stringify({
+        model:process.env.OPENAI_TTS_MODEL||'gpt-4o-mini-tts',
+        voice:process.env.OPENAI_TTS_VOICE||'marin',
+        input:text,response_format:'mp3',
+        instructions:'Hablá en español argentino natural, cálido, claro y conversacional. Evitá ritmo robótico. Pronunciá bien los montos en pesos y las fechas. No agregues palabras al texto.'
+      })
+    });
+    if(!response.ok)return res.status(502).json({error:'No se pudo generar la voz de OpenAI. Comprobá saldo y permisos.'});
+    const bytes=Buffer.from(await response.arrayBuffer());
+    if(bytes.length>3_000_000)return res.status(502).json({error:'El audio generado excedió el límite permitido.'});
+    res.setHeader('Content-Type','audio/mpeg');
+    res.setHeader('Cache-Control','private, no-store');
+    res.send(bytes);
+  }catch(e){if(!res.headersSent)res.status(502).json({error:'Error al sintetizar voz. Intentá de nuevo.'});}
+  finally{clearTimeout(timeout);}
+});
 app.post('/api/voice/transcribe',limited(10),express.raw({type:['audio/webm','audio/mp4','audio/mpeg','audio/ogg','audio/wav','application/octet-stream'],limit:'8mb'}),wrap(async req=>{
   if(!process.env.OPENAI_API_KEY)throw new Error('Configurá OPENAI_API_KEY para transcribir audio; también podés usar el dictado nativo del navegador.');
   if(!Buffer.isBuffer(req.body)||req.body.length<100)throw new Error('Audio vacío');

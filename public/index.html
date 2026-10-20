@@ -10,8 +10,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/app.css?v=6">
-  <script defer type="module" src="/app.js?v=6"></script>
+  <link rel="stylesheet" href="/app.css?v=7">
+  <script defer type="module" src="/app.js?v=7"></script>
   <title>GastosApp · Mis finanzas</title>
 </head>
 <body>
@@ -138,17 +138,19 @@
       </section>
       <div class="chat-controls">
         <label><input id="chatSpeak" type="checkbox" checked> Responder con voz</label>
-        <label><input id="chatHandsFree" type="checkbox"> Manos libres (si el navegador lo permite)</label>
-        <label id="chatAIOption" class="hidden"><input id="chatAI" type="checkbox"> Mejorar interpretación con IA paga</label>
+        <label id="chatAIOption" class="hidden"><input id="chatAI" type="checkbox"> <strong>Conversación inteligente (IA)</strong></label>
+        <label id="chatNaturalOption" class="hidden"><input id="chatNaturalVoice" type="checkbox" checked> Voz natural de IA</label>
+        <label id="chatBetterSTTOption" class="hidden"><input id="chatBetterSTT" type="checkbox" checked> Transcripción precisa (IA)</label>
+        <label><input id="chatHandsFree" type="checkbox"> Manos libres (dictado del navegador)</label>
       </div>
       <div class="chat-input-row">
-        <input id="chatInput" type="text" maxlength="450" autocomplete="off" placeholder="Decime un gasto, «nada más» o «sí, guardar»" aria-label="Tu mensaje">
+        <input id="chatInput" type="text" maxlength="850" autocomplete="off" placeholder="Contame varios gastos juntos,, «nada más» o «sí, guardar»" aria-label="Tu mensaje">
         <button id="chatMic" type="button" class="icon-btn chat-mic" aria-label="Hablar">🎙</button>
         <button id="chatSend" type="button" class="btn btn-primary">Enviar</button>
       </div>
       <div class="chat-bottom"><small id="chatStatus" role="status">Conversación lista.</small>
         <button id="chatQuick" type="button" class="text-action">Modo rápido: un movimiento →</button></div>
-      <p class="small-print">No se guarda ni se carga ningún gasto hasta que confirmes toda la tanda. La voz del navegador no requiere una API paga.</p>
+      <p class="small-print">No se guarda ni se carga ningún gasto hasta que confirmes toda la tanda. La voz natural, la transcripción mejorada y el chat inteligente utilizan créditos de OpenAI. La voz es generada por IA, no es una persona.</p>
     </div>
   </dialog>
   <dialog id="assistantDialog" class="app-dialog assistant-dialog">

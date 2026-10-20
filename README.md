@@ -88,3 +88,29 @@ Endpoints principales: GET /api/state?month=YYYY-MM; POST /api/transactions; PAT
 7. La voz de respuesta utiliza speechSynthesis del navegador sin costos de OpenAI. El reconocimiento/transcripción puede usar servicios del navegador, según cada implementación y sus políticas.
 8. Por privacidad, no se envían los gastos a un modelo de chat remoto salvo que marques la opción «Mejorar interpretación con IA paga». El intérprete local sigue disponible sin API Key.
 9. Los dos modos conviven: **Conversación** (tandas de varios movimientos) y **Modo rápido** (movimiento único).
+
+## Conversación inteligente con OpenAI: uso opcional y facturado
+
+El chat inteligente permite decir varios gastos en una sola frase y corregir importes hablando normalmente. OpenAI interpreta la conversación, genera respuestas y, cuando se habilita, voz más natural. La app siempre requiere confirmación explícita de la tanda antes de guardar.
+
+En el servidor, completá el archivo privado .env:
+
+    OPENAI_API_KEY=TU_CLAVE_REAL
+    OPENAI_NLU_MODEL=gpt-4o-mini
+    OPENAI_STT_MODEL=gpt-4o-mini-transcribe
+    OPENAI_TTS_MODEL=gpt-4o-mini-tts
+    OPENAI_TTS_VOICE=marin
+
+Desplegá solamente este servicio: docker compose up -d --build --force-recreate web
+
+Opciones del diálogo:
+- Conversación inteligente: entiende frases libres, tandas, correcciones, fechas y pagos. Envía el texto y el contexto de la tanda pendiente a OpenAI.
+- Transcripción precisa: graba hasta que el usuario vuelve a pulsar el micrófono, y usa API en vez del motor de navegador.
+- Voz natural: MP3 con gpt-4o-mini-tts, voz marin e indicaciones de acento argentino. La voz es generada por inteligencia artificial, no es una persona. Vuelve a voz del navegador si falla.
+- Manos libres: opción experimental, solo con SpeechRecognition del navegador.
+
+Chat, transcripción y voz generan costos independientes. Los límites de solicitudes por minuto NO equivalen a presupuesto mensual: controlá créditos, límites y avisos en la plataforma OpenAI.
+
+Privacidad: jamás colocar la clave en el frontend ni compartirla en el chat. Los gastos se envían a OpenAI solo al habilitar las funciones IA. Los datos no se guardan en GastosApp hasta que el usuario confirma. Lotes atómicos/idempotentes.
+
+Ejemplo esperado: "Primero 980000 a Juana, 160000 a Personal y 300000 del supermercado, todo a fin de mes". La IA debe presentar TRES gastos separados (980000, 160000, 300000), pendientes y con vencimiento a fin de mes.
