@@ -240,10 +240,13 @@ app.post('/api/chat/turn',limited(20),wrap(async (req,res)=>{
 
 }));
 app.post('/api/chat/speech',limited(16),async(req,res)=>{
+  let activeProvider=null;
   const phrase=String(req.body?.text||'').trim();
   if(!phrase||phrase.length>620)return res.status(400).json({error:'Texto de voz demasiado extenso (máximo 620 caracteres).',code:'invalid_text'});
   try{
     const provider=providerFrom(req.body?.provider);
+    activeProvider=provider;
+    res.setHeader('X-GastosApp-TTS-Provider',provider);
     if(provider==='gemini'){
       const chosen=GEMINI_VOICES.includes(req.body?.voice)?req.body.voice:(process.env.GEMINI_TTS_VOICE||'Kore');
       const output=await geminiSpeech({text:phrase,voice:chosen,key:process.env.GEMINI_API_KEY,
@@ -262,8 +265,17 @@ app.post('/api/chat/speech',limited(16),async(req,res)=>{
     if(bytes.length<100)throw Object.assign(new Error('OpenAI devolvió audio vacío.'),{status:502,code:'empty_audio'});
     if(bytes.length>3_000_000)throw Object.assign(new Error('Audio generado demasiado grande.'),{status:502,code:'audio_too_large'});
     res.setHeader('Content-Type','audio/mpeg');res.setHeader('Cache-Control','private, no-store');res.send(bytes);
-  }catch(e){const problem=publicError(e);console.error('TTS',problem.code,problem.upstreamStatus||'',problem.error);
-    if(!res.headersSent)res.status(e.status||502).json(problem);}
+  }catch(e){
+    const problem=publicError(e);
+    if(!problem.provider&&activeProvider)problem.provider=activeProvider;
+    console.error('TTS',JSON.stringify({
+      provider:activeProvider||'unknown',model:activeProvider==='gemini'?(process.env.GEMINI_TTS_MODEL||GEMINI_MODELS.tts):
+        (process.env.OPENAI_TTS_MODEL||'gpt-4o-mini-tts'),
+      status:e.upstreamStatus||e.status||502,code:problem.code,message:problem.error,
+      textLength:phrase.length
+    }));
+    if(!res.headersSent)res.status(e.status||502).json(problem);
+  }
 });
 app.post('/api/voice/transcribe',limited(10),
   express.raw({type:['audio/webm','audio/mp4','audio/mpeg','audio/ogg','audio/wav','audio/x-wav','application/octet-stream'],limit:'8mb'}),

@@ -51,5 +51,13 @@ test('Gemini HTTP: diagnósticos, chat y transcripción encolan con res válido 
  const transcript=await req('/api/voice/transcribe',{method:'POST',body:bytes,
   headers:{'Content-Type':'audio/wav','X-AI-Provider':'gemini'}});
  assert.equal((await complete(transcript,'transcription')).text,'probando uno dos tres');
+ const spoken=await fetch(url+'/api/chat/speech',{
+  method:'POST',headers:{Cookie:cookie,'Content-Type':'application/json'},
+  body:JSON.stringify({text:'Hola, ¿cómo andás? Soy tu asistente de GastosApp.',provider:'gemini',voice:'Kore'})
+ });
+ assert.equal(spoken.status,200);
+ assert.equal(spoken.headers.get('content-type'),'audio/wav');
+ assert.equal(spoken.headers.get('x-gastosapp-tts-provider'),'gemini');
+ assert.equal(Buffer.from(await spoken.arrayBuffer()).toString('ascii',0,4),'RIFF');
  assert.doesNotMatch(stderr,/res is not defined/);
 });

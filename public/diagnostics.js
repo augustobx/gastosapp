@@ -1,5 +1,6 @@
-import {waitTask,describeAiError} from './ai-tasks.js?v=12';
-import {providerFor,saveProvider,voiceFor,saveVoice} from './providers.js?v=12';
+import {voiceFailure} from './voice-errors.js?v=13';
+import {waitTask,describeAiError} from './ai-tasks.js?v=13';
+import {providerFor,saveProvider,voiceFor,saveVoice} from './providers.js?v=13';
 // Diagnóstico visible por modelo: nunca pedir ni mostrar la clave API.
 export function setupAIDiagnostics(){
  const $=id=>document.getElementById(id);
@@ -157,9 +158,13 @@ export function setupAIDiagnostics(){
    const r=await fetch('/api/chat/speech',{method:'POST',credentials:'same-origin',
     headers:{'Content-Type':'application/json'},body:JSON.stringify({text:'Hola, ¿cómo andás? Soy tu asistente de GastosApp. Contame tus gastos y los organizamos juntos.',voice:$('aiVoiceSelect').value,provider:providerFor('tts')})});
    if(!r.ok){
-    const error=await r.json().catch(()=>({error:'Respuesta no válida'}));
-    voiceNote((error.upstreamStatus?(error.provider==='gemini'?'Gemini HTTP ':'OpenAI HTTP ')+error.upstreamStatus:'GastosApp HTTP '+r.status)+
-      ' · '+(error.code||'error')+': '+error.error+(error.hint?' · '+error.hint:''),'error');return;
+    const error=await voiceFailure(r,'Prueba de voz natural');
+    voiceNote(error.message,'error');return;
+   }
+   const contentType=String(r.headers.get('content-type')||'').toLowerCase();
+   if(!contentType.startsWith('audio/')){
+    voiceNote('GastosApp HTTP 200 pero respondió '+(contentType||'sin Content-Type')+' en vez de audio. Revisá los logs de GastosApp.','error');
+    return;
    }
    const blob=await r.blob();playerUrl=URL.createObjectURL(blob);
    const player=$('aiVoicePlayer');player.src=playerUrl;player.classList.remove('hidden');
