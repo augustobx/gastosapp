@@ -1,3 +1,4 @@
+import {providerFor,voiceFor} from './providers.js?v=10';
 // Asistente conversacional: IA optativa para comprensión, voz y transcripción.
 // Ningún movimiento se guarda hasta confirmar toda la tanda.
 export function setupChat({request,refresh,getAccounts,fmt,dateLabel,hasAI,openQuick,openDiagnostics}){
@@ -54,9 +55,7 @@ export function setupChat({request,refresh,getAccounts,fmt,dateLabel,hasAI,openQ
    const cut=message.slice(0,500);const end=Math.max(cut.lastIndexOf('. '),cut.lastIndexOf(' ¿'));
    return (end>180?cut.slice(0,end+1):cut)+' El detalle completo quedó escrito en el chat.';
  }
- function preferredVoice(){
-   try{return localStorage.getItem('gastosapp-tts-voice')||'marin';}catch{return 'marin';}
- }
+ function preferredVoice(){return voiceFor(providerFor('tts'));}
  function say(message,{bubbleOnly=false}={}){
    if(!bubbleOnly)bubble('assistant',message);
    chat.lastSpoken=message;
@@ -69,10 +68,10 @@ export function setupChat({request,refresh,getAccounts,fmt,dateLabel,hasAI,openQ
    const abort=new AbortController();chat.voiceAbort=abort;
    void(async()=>{
      try{
-       status('Generando voz natural ('+preferredVoice()+')...');
+       status('Generando voz natural con '+providerFor('tts')+' ('+preferredVoice()+')...');
        const response=await fetch('/api/chat/speech',{method:'POST',credentials:'same-origin',
          headers:{'Content-Type':'application/json'},
-         body:JSON.stringify({text:voiceText(message),voice:preferredVoice()}),signal:abort.signal});
+         body:JSON.stringify({text:voiceText(message),voice:preferredVoice(),provider:providerFor('tts')}),signal:abort.signal});
        if(!response.ok)throw new Error(await audioProblem(response,'Voz natural'));
        const audioBlob=await response.blob();
        if(audioBlob.size<100)throw new Error('La API devolvió HTTP 200 pero el audio está vacío.');
@@ -208,7 +207,7 @@ export function setupChat({request,refresh,getAccounts,fmt,dateLabel,hasAI,openQ
    chat.busy=true;status('La IA está interpretando lo que dijiste...');
    try{
      const query=chat.unresolved?'Mensaje anterior pendiente: '+chat.unresolved+'. Aclaración: '+text:text;
-     const r=await request('/api/chat/turn','POST',{text:query,phase:chat.phase,items:chat.items});
+     const r=await request('/api/chat/turn','POST',{text:query,phase:chat.phase,items:chat.items,provider:providerFor('nlu')});
      const action=r.action;
      if(action==='add'){
        chat.unresolved=null;chat.items.push(...r.items);chat.phase='collect';renderReview();
@@ -270,7 +269,7 @@ export function setupChat({request,refresh,getAccounts,fmt,dateLabel,hasAI,openQ
    chat.busy=true;status('Interpretando...');
    try{
      const phrase=(chat.pending?.notes?chat.pending.notes+' ':'')+text;
-     const d=await request('/api/interpret','POST',{text:phrase,useAI:$('chatAI').checked&&hasAI()});
+     const d=await request('/api/interpret','POST',{text:phrase,useAI:$('chatAI').checked&&hasAI(),provider:providerFor('nlu')});
      if(d.questions?.length||!(d.amount>0)||(d.installmentCount>1&&account(d.accountId)?.kind!=='credit')){
        say('Necesito revisar algunos datos. '+(d.questions||[]).join(' ')+'. Completalos en el formulario.');
        edit(null,d,'collect');
@@ -330,7 +329,7 @@ export function setupChat({request,refresh,getAccounts,fmt,dateLabel,hasAI,openQ
        status('Enviando '+(blob.size/1024).toFixed(0)+' KB ('+rawType+') al modelo de transcripción...');
        try{
          const resp=await fetch('/api/voice/transcribe',{method:'POST',credentials:'same-origin',
-           headers:{'Content-Type':rawType},body:blob});
+           headers:{'Content-Type':rawType,'X-AI-Provider':providerFor('stt')},body:blob});
          if(!resp.ok)throw new Error(await audioProblem(resp,'Transcripción'));
          const data=await resp.json();
          if(!data.data?.text)throw new Error('La API respondió sin texto. Revisá el micrófono y volvé a grabar.');

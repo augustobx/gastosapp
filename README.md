@@ -135,3 +135,31 @@ El modo Voz natural usa audio MP3 de OpenAI con indicaciones de español argenti
 El TTS es voz sintética de IA y no una grabación humana. La naturalidad real varía según voz, modelo, navegador y reproducción. Usar Voz natural, Transcripción IA y Conversación IA consume créditos por separado. Los tests reales necesitan OPENAI_API_KEY en el contenedor; nunca subir .env a GitHub.
 
 **Despliegue seguro**: estando en /opt/apps/gastosapp ejecutar git pull --ff-only origin main, docker compose config -q, docker compose up -d --build --force-recreate web. Solo afecta servicio web de GastosApp, preserva volumen.
+
+## Google Gemini + OpenAI: proveedores seleccionables por función
+
+Documentación oficial verificada el 20/10/2026:
+- Modelos https://ai.google.dev/gemini-api/docs/models
+- Contenido / formato JSON https://ai.google.dev/api/generate-content
+- Audio de entrada / transcripción con Flash https://ai.google.dev/gemini-api/docs/generate-content/audio
+- TTS: Interactions API, formato WAV https://ai.google.dev/gemini-api/docs/speech-generation
+- Precios, cuotas y capa gratuita: https://ai.google.dev/gemini-api/docs/pricing
+
+Crear una API key propia de Gemini en https://aistudio.google.com/apikey. No usar la clave de OpenAI; son proveedores independientes. Pegarla **únicamente** en el archivo privado /opt/apps/gastosapp/.env:
+
+    GEMINI_API_KEY=TU_CLAVE_GOOGLE
+    GEMINI_NLU_MODEL=gemini-3.8-flash
+    GEMINI_STT_MODEL=gemini-3.8-flash
+    GEMINI_TTS_MODEL=gemini-3.8-flash-tts
+    GEMINI_TTS_VOICE=Kore
+
+OPENAI_API_KEY puede permanecer configurada y seguir utilizándose. En Configuración > OpenAI y Google Gemini se elige **por separado** el proveedor para interpretación, transcripción y voz. El navegador guarda esas preferencias localmente. La clave nunca llega al frontend. Si una clave falta, la interfaz deshabilita sus pruebas y pide configurar el proveedor. No hay cambio silencioso de proveedor ante errores (para no generar costos inesperados).
+
+Modelos Gemini elegidos según soporte documentado:
+- **Conversación** `gemini-3.8-flash`, `models/...:generateContent`, entradas texto, output JSON estructurado (generationConfig.responseFormat.text.schema) con validación de lote del servidor.
+- **Transcripción** `gemini-3.8-flash`, que recibe audio inline (WebM/WAV/MP3/etc) con generateContent y devuelve texto mediante instrucciones literales. **No es** `gemini-3.5-transcribe`: ese modelo especializado tiene un flujo distinto basado en la API de Interactions y subida de archivos; no se expone como opción equivalente en esta implementación.
+- **Voz natural** `gemini-3.8-flash-tts`, Interactions API POST /v1beta/interactions, con salida WAV RIFF completa (NO PCM sin cabecera ni MP3) y voces predefinidas documentadas, por defecto Kore. Modelo alternativo opcional en .env: `gemini-3.8-flash-lite-tts` (mismo esquema; menor costo y latencia).
+
+La capa gratuita depende del modelo, región, límites diarios, facturación y proyecto. Gemini NO reemplaza de forma automática a OpenAI y NO garantiza uso gratuito ilimitado. Las pruebas que generan texto/audio pueden consumir créditos; el test de conexión solo lista modelos.
+
+Seguridad y despliegue: `git pull --ff-only origin main` y `docker compose up -d --build --force-recreate web` dentro de GastosApp. Nunca borrar volúmenes ni tocar otros contenedores. Test HTTP 200 por proveedor antes de usar los micrófonos reales. El modo conversacional exige confirmación antes del guardado atómico.

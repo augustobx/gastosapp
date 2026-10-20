@@ -1,5 +1,6 @@
-import { setupChat } from './chat.js?v=9';
-import { setupAIDiagnostics } from './diagnostics.js?v=9';
+import {providerFor,saveProvider} from './providers.js?v=10';
+import { setupChat } from './chat.js?v=10';
+import { setupAIDiagnostics } from './diagnostics.js?v=10';
 const $ = id => document.getElementById(id);
 const $$ = selector => [...document.querySelectorAll(selector)];
 const fmt = n => new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS',maximumFractionDigits:2}).format(Number(n||0));
@@ -220,7 +221,7 @@ async function interpretText(){
   const text=$('assistantText').value.trim();
   if(!text)return toast('Contame qué pasó para interpretarlo');
   $('interpretBtn').disabled=true;$('interpretBtn').textContent='Interpretando...';
-  try{state.draft=await request('/api/interpret','POST',{text,useAI:$('useAI').checked});preview();}
+  try{state.draft=await request('/api/interpret','POST',{text,useAI:$('useAI').checked,provider:providerFor('nlu')});preview();}
   catch(err){toast(err.message);}
   finally{$('interpretBtn').disabled=false;$('interpretBtn').textContent='Interpretar movimiento →';}
 }
@@ -320,7 +321,18 @@ async function init(){
   try{
     const s=await request('/api/session');state.aiEnabled=s.aiEnabled;
     $('aiOption').classList.toggle('hidden',!s.aiEnabled);
-    if(s.authenticated){hideLogin();await refresh();}else showLogin();
+    if(s.authenticated){
+      hideLogin();await refresh();
+      try{
+        const config=await request('/api/ai/config');
+        localStorage.setItem('gastosapp-provider-default',config.defaultProvider||'openai');
+        for(const service of ['nlu','stt','tts']){
+          const current=providerFor(service);
+          if(!config.providers?.[current]?.configured)
+            saveProvider(service,config.defaultProvider||'openai');
+        }
+      }catch{/* Las finanzas funcionan incluso si los proveedores están desconectados. */}
+    }else showLogin();
   }catch(err){toast(err.message);showLogin();}
 }
 init();
