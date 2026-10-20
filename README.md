@@ -45,6 +45,9 @@ Reutiliza el contenedor gastosapp-web y la red proxy del Nginx Proxy Manager. Re
 
 - Sueldo mensual: proyección automática todos los meses; no lo dupliques como otro ingreso.
 - Gasto con efectivo, billetera o débito: se contabiliza en la fecha del gasto.
+- Un gasto programado puede tener fecha de registro y vencimiento diferentes: se proyecta en el mes del vencimiento, queda pendiente hasta marcarlo pagado.
+- El asistente detecta expresiones como "a fin de mes", "fin del mes que viene", "voy a pagar" y "pago único"; decir pago único no significa pagado.
+- Al terminar de dictar aparece directamente la interpretación previa; requiere confirmación antes de guardar.
 - Tarjeta de crédito: se registra la compra y se distribuye por mes de vencimiento según la configuración de la tarjeta.
 - Las cuotas se marcan pagadas individualmente; los pagos no suman una segunda erogación.
 - Compra posterior al cierre: primera cuota vence dos meses después de la compra.
