@@ -141,7 +141,7 @@ app.get('/api/ai/network',limited(6),wrap(async req=>{
     geminiNetwork({key:process.env.GEMINI_API_KEY}):
     networkDiagnostics({key:process.env.OPENAI_API_KEY});
 }));
-app.post('/api/ai/diagnostics/:service',limited(4),wrap(async req=>{
+app.post('/api/ai/diagnostics/:service',limited(4),wrap(async (req,res)=>{
   const type=String(req.params.service);
   const provider=providerFrom(req.body?.provider);
   if(provider==='gemini'){
@@ -227,7 +227,7 @@ app.post('/api/interpret',limited(30),wrap(async req=>{
   }
   return draft;
 }));
-app.post('/api/chat/turn',limited(20),wrap(async req=>{
+app.post('/api/chat/turn',limited(20),wrap(async (req,res)=>{
   const accounts=store.snapshot().accounts;
   const items=Array.isArray(req.body?.items)?req.body.items:[];
   const phase=['collect','confirm','edit'].includes(req.body?.phase)?req.body.phase:'collect';
@@ -267,7 +267,7 @@ app.post('/api/chat/speech',limited(16),async(req,res)=>{
 });
 app.post('/api/voice/transcribe',limited(10),
   express.raw({type:['audio/webm','audio/mp4','audio/mpeg','audio/ogg','audio/wav','audio/x-wav','application/octet-stream'],limit:'8mb'}),
-  wrap(async req=>{
+  wrap(async (req,res)=>{
     const provider=providerFrom(req.get('x-ai-provider'));
 
     const blob=req.body;
