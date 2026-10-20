@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { store } from './db.js';
 import { interpret, isoDay, monthOf } from './lib/engine.js';
 import { aiChatTurn } from './lib/ai-chat.js';
-import { VOICES,callOpenAI,makeSpeechBody,publicError,diagnostics } from './lib/openai-health.js';
+import { VOICES,callOpenAI,makeSpeechBody,publicError,diagnostics,networkDiagnostics } from './lib/openai-health.js';
 
 const port=Number(process.env.PORT||3000);
 const password=process.env.APP_PASSWORD||'';
@@ -60,6 +60,8 @@ function guardOrigin(req,res,next){
   }
   next();
 }
+// Una respuesta 502 sin este header no fue generada por las rutas Express de GastosApp.
+app.use('/api',(req,res,next)=>{res.setHeader('X-GastosApp-Backend','node');next();});
 app.use('/api',guardOrigin);
 app.get('/api/health',(_req,res)=>res.json({status:'ok',app:'gastosapp-v2'}));
 app.get('/api/session',(req,res)=>res.json({authenticated:auth(req),aiEnabled:Boolean(process.env.OPENAI_API_KEY)}));
@@ -104,6 +106,10 @@ app.get('/api/ai/config',wrap(()=>({
   tts:process.env.OPENAI_TTS_MODEL||'gpt-4o-mini-tts',
   defaultVoice:process.env.OPENAI_TTS_VOICE||'marin',
   voices:VOICES
+})));
+// Primero comprobar salida HTTPS y autenticación, sin generar contenido facturable.
+app.get('/api/ai/network',limited(6),wrap(async()=>networkDiagnostics({
+  key:process.env.OPENAI_API_KEY
 })));
 app.post('/api/ai/diagnostics/:service',limited(4),wrap(async req=>{
   const type=String(req.params.service);

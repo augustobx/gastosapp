@@ -92,3 +92,8 @@
 .ai-microphone-test strong{font-size:13px}
 .ai-microphone-test p{margin:6px 0 0;font-size:11px;line-height:1.55;color:var(--sub)}
 .ai-microphone-test .ai-notice{width:100%;min-width:0}
+
+.ai-network-check{display:grid;gap:10px;padding:15px;border:1px solid var(--border);border-radius:13px;background:var(--surface2)}
+.ai-network-check strong{font-size:13px}
+.ai-network-check p{font-size:12px;line-height:1.55;color:var(--sub);margin:0}
+.ai-network-check .btn{justify-self:start}

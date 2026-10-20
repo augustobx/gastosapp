@@ -40,7 +40,10 @@ test('HTTP: protección, medios, cuotas, recurrentes y confirmación de pago',as
  const cookie=login.cookie.split(';')[0];
  const aiWithoutKey=await get('/api/chat/turn','POST',{text:'Cargar un gasto',items:[],phase:'collect'},cookie);
  assert.equal(aiWithoutKey.code,503);
- const aiConfig=await get('/api/ai/config','GET',null,cookie);
+ const network=await get('/api/ai/network','GET',null,cookie);
+ assert.equal(network.code,503);
+ assert.equal(network.json.code,'missing_key');
+  const aiConfig=await get('/api/ai/config','GET',null,cookie);
  assert.equal(aiConfig.code,200);
  assert.equal(aiConfig.json.data.configured,false);
  assert.equal(aiConfig.json.data.stt,'gpt-4o-mini-transcribe');

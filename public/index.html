@@ -10,8 +10,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/app.css?v=8">
-  <script defer type="module" src="/app.js?v=8"></script>
+  <link rel="stylesheet" href="/app.css?v=9">
+  <script defer type="module" src="/app.js?v=9"></script>
   <title>GastosApp · Mis finanzas</title>
 </head>
 <body>
@@ -90,6 +90,12 @@
               <span id="aiConnectionState" class="ai-status-tag">Sin verificar</span>
             </div>
             <div id="aiConfigMessage" class="ai-notice" role="status">Cargando configuración de los modelos...</div>
+            <div class="ai-network-check">
+              <strong>Primero: comprobar conexión real desde el servidor</strong>
+              <p>Esta prueba comprueba acceso a api.openai.com y validez de tu clave, sin generar texto ni audio. Si pasa, seguimos con los modelos.</p>
+              <button id="aiTestNetwork" type="button" class="btn btn-muted">Probar conexión OpenAI (sin generación)</button>
+              <div id="aiNetworkResult" class="ai-notice" role="status">Sin probar.</div>
+            </div>
             <div class="ai-diagnostic-table">
               <div class="ai-service" data-ai-service="nlu">
                 <div><strong>Interpretación y conversación</strong><small id="aiModelNlu">gpt-4o-mini</small></div>
