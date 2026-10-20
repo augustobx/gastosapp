@@ -1,6 +1,7 @@
-import {providerFor,saveProvider} from './providers.js?v=14';
-import { setupChat } from './chat.js?v=14';
-import { setupAIDiagnostics } from './diagnostics.js?v=14';
+import {setupAIUsage} from './ai-usage.js?v=15';
+import {providerFor,saveProvider} from './providers.js?v=15';
+import { setupChat } from './chat.js?v=15';
+import { setupAIDiagnostics } from './diagnostics.js?v=15';
 const $ = id => document.getElementById(id);
 const $$ = selector => [...document.querySelectorAll(selector)];
 const fmt = n => new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS',maximumFractionDigits:2}).format(Number(n||0));
@@ -10,7 +11,7 @@ const dateLabel = s => s ? s.slice(8,10)+'/'+s.slice(5,7)+'/'+s.slice(0,4) : '';
 const iconFor = c => ({Comida:'◈',Servicios:'⌁',Hogar:'⌂',Transporte:'➤',Salud:'✚',Educación:'▤','Deudas y préstamos':'▧',Tecnología:'▣',Entretenimiento:'✦',Indumentaria:'✧',Extra:'↗',Sueldo:'↗',Ventas:'↗'})[c]||'◉';
 const types = {dashboard:['Resumen','Tu dinero, más claro.','Una mirada simple a tus finanzas.'],movements:['Movimientos','Cada peso cuenta.','Buscá, controlá y administrá tus movimientos.'],cards:['Cuentas y tarjetas','Todos tus medios de pago.','Compras, tarjetas y vencimientos.'],reports:['Estadísticas','Conocé tus números.','Así se distribuye tu dinero.'],settings:['Configuración','A tu manera.','Ajustá la experiencia a tus necesidades.']};
 const categories = ['Comida','Servicios','Hogar','Transporte','Salud','Educación','Tecnología','Entretenimiento','Indumentaria','Deudas y préstamos','Tarjetas','Otros','Extra','Sueldo','Ventas'];
-let aiDiagnostics=null;
+let aiDiagnostics=null,aiUsagePanel=null;
 const state = {month:localDay().slice(0,7),data:null,auth:false,aiEnabled:false,view:'dashboard',draft:null,editId:null,accountEditId:null,recognizer:null,recorder:null,audioStream:null,audioChunks:[],deferredInstall:null};
 function toast(message){const t=$('toast');t.textContent=message;t.classList.add('visible');clearTimeout(toast.timer);toast.timer=setTimeout(()=>t.classList.remove('visible'),4200);}
 async function request(url, method='GET',body) {
@@ -39,7 +40,7 @@ function go(view){
   $$('[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===view));
   const meta=types[view];$('breadcrumb').textContent=meta[0];$('pageTitle').textContent=meta[1];$('pageSubtitle').textContent=meta[2];
   window.scrollTo({top:0,behavior:'smooth'});
-  if(view==='settings'&&state.auth)void aiDiagnostics?.load();
+  if(view==='settings'&&state.auth){void aiDiagnostics?.load();void aiUsagePanel?.refresh();}
 }
 const account = id => state.data?.accounts.find(a=>a.id===id);
 function populateAccounts(selected){
@@ -269,6 +270,7 @@ async function toggleVoice(){
 }
 function events(){
   aiDiagnostics=setupAIDiagnostics();
+  aiUsagePanel=setupAIUsage({request});
   setupChat({
     request,refresh,getAccounts:()=>state.data?.accounts||[],fmt,dateLabel,hasAI:()=>state.aiEnabled,
     openQuick:()=>{$('assistantPreview').classList.add('hidden');state.draft=null;showDialog('assistantDialog');},

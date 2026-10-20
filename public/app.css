@@ -102,3 +102,26 @@
 .ai-provider-options label{font-size:12px;font-weight:650;color:var(--sub)}
 .ai-provider-options select{display:block;width:100%;margin-top:7px}
 @media(max-width:760px){.ai-provider-options{grid-template-columns:1fr}}
+
+/* Panel de consumo AI: legible en desktop y PWA */
+.ai-usage-panel{margin-top:18px;display:grid;gap:14px}
+.ai-usage-panel h4{font-size:13px;margin:4px 0}
+.ai-usage-toolbar{display:flex;gap:12px;align-items:end;flex-wrap:wrap}
+.ai-usage-toolbar label{font-size:12px;color:var(--sub);display:grid;gap:5px}
+.ai-usage-toolbar select{min-width:150px}
+.ai-usage-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.ai-usage-stat{border:1px solid var(--border);border-radius:12px;padding:13px;display:grid;gap:6px;min-width:0}
+.ai-usage-stat small,.ai-usage-stat span{font-size:11px;color:var(--sub)}
+.ai-usage-stat strong{font-size:19px;white-space:normal;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+.ai-usage-stats>.ai-fineprint{grid-column:1/-1}
+.ai-usage-scroller{max-width:100%;overflow-x:auto;border:1px solid var(--border);border-radius:12px}
+.ai-usage-table{border-collapse:collapse;width:100%;min-width:640px;font-size:12px}
+.ai-usage-table th,.ai-usage-table td{padding:12px 10px;border-bottom:1px solid var(--border);text-align:left;font-variant-numeric:tabular-nums}
+.ai-usage-table thead{background:var(--surface2)}
+.ai-usage-table tr:last-child td{border-bottom:0}
+.ai-usage-issues{display:grid;gap:10px}
+.ai-usage-issue{border:1px solid var(--border);border-radius:10px;padding:11px 13px;display:grid;gap:4px}
+.ai-usage-issue strong{font-size:12px}
+.ai-usage-issue p,.ai-usage-issue small{margin:0;color:var(--sub);font-size:11px;line-height:1.5}
+@media(max-width:820px){.ai-usage-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:440px){.ai-usage-stat strong{font-size:16px}}
