@@ -1,7 +1,7 @@
-import {getNaturalVoice} from './speech-request.js?v=18';
-import {voiceFailure} from './voice-errors.js?v=18';
-import {waitTask,describeAiError} from './ai-tasks.js?v=18';
-import {providerFor,saveProvider,voiceFor,saveVoice} from './providers.js?v=18';
+import {getNaturalVoice} from './speech-request.js?v=19';
+import {voiceFailure} from './voice-errors.js?v=19';
+import {waitTask,describeAiError} from './ai-tasks.js?v=19';
+import {providerFor,saveProvider,voiceFor,saveVoice} from './providers.js?v=19';
 // Diagnóstico visible por modelo: nunca pedir ni mostrar la clave API.
 export function setupAIDiagnostics(){
  const $=id=>document.getElementById(id);

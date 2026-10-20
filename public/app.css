@@ -187,3 +187,36 @@
 .loan-edit-dialog input:disabled{opacity:.65}
 #loanEditFeedback[data-kind=error]{color:#d14a4a}
 #loanEditFeedback[data-kind=neutral]{color:var(--sub)}
+
+/* Movimientos: dos vistas accesibles, columnas ordenables y selección múltiple */
+.movement-toolbar-label{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--sub)}
+.movement-toolbar-label select{min-width:120px}
+.movement-view-switch{display:flex;align-items:center;gap:4px}
+.movement-view-switch [aria-pressed=true]{outline:2px solid var(--accent);outline-offset:-2px}
+.movement-bulk{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px;margin:10px 0;border:1px solid var(--border);border-radius:12px;background:var(--surface)}
+.movement-bulk.hidden{display:none}
+.movement-bulk strong{font-size:13px}
+.movement-table-scroll{max-width:100%;overflow-x:auto;overscroll-behavior-x:contain}
+.movement-table{border-collapse:collapse;min-width:870px;width:100%;font-size:12px}
+.movement-table th,.movement-table td{padding:10px 9px;text-align:left;border-bottom:1px solid var(--border);vertical-align:middle;white-space:nowrap}
+.movement-table th{background:var(--surface2);position:sticky;top:0;z-index:1}
+.movement-table tr:last-child td{border-bottom:0}
+.movement-table tr:hover td{background:var(--surface2)}
+.movement-table th button.movement-th{background:none;border:0;color:inherit;font:inherit;font-weight:700;padding:4px 2px;cursor:pointer;white-space:nowrap}
+.movement-table th button.movement-th:focus-visible{outline:2px solid var(--accent);border-radius:4px}
+.movement-table td strong{font-weight:650}
+.movement-table td small{display:block;margin-top:3px;color:var(--sub)}
+.movement-table td.incoming{color:var(--positive)}
+.movement-select-cell{width:38px;min-width:38px}
+.movement-select-cell input{width:18px;height:18px}
+.movement-actions-cell{display:flex;gap:4px;align-items:center}
+.movement-status{font-size:11px;border-radius:30px;padding:4px 8px;display:inline-block}
+.movement-status.is-done{background:rgba(32,152,96,.12);color:var(--positive)}
+.movement-status.is-pending{background:rgba(180,124,24,.12)}
+.movement-table-active{padding:0!important}
+@media(max-width:730px){
+ .movement-bulk{display:grid;grid-template-columns:1fr 1fr}
+ .movement-bulk strong{grid-column:1/-1}
+ .movement-bulk #movementBulkClear{grid-column:1/-1}
+ .movement-table{min-width:840px}
+}

@@ -79,8 +79,8 @@ function insertTransaction(s,data) {
     if(type==='income' && dueDate)throw new Error('El vencimiento corresponde a un gasto');
     const a=s.accounts.find(a=>a.id===accountId);
     if(data.isRecurring===true){
-      if(type!=='expense'||count!==1)throw new Error('Los gastos recurrentes deben ser gastos mensuales sin cuotas');
-      const recurring={id:uid(),title,amount,category,accountId,notes,startDate:date,paidMonths:{}};
+      if(count!==1||dueDate)throw new Error('Los movimientos fijos mensuales no admiten cuotas ni vencimiento separado');
+      const recurring={id:uid(),type,title,amount,category,accountId,notes,startDate:date,paidMonths:{}};
       if(data.isPaid===true) recurring.paidMonths[date.slice(0,7)]=true;
       s.recurrences.unshift(recurring);return {kind:'recurrence',data:recurring};
     }
@@ -131,7 +131,7 @@ export const store = {
         installments:p.installments.map(i=>({id:i.id,number:i.number,total:i.total,amount:i.amount,
           dueDate:i.dueDate,plannedDate:i.plannedDate||null,paidDate:i.paidDate||null,
           isPaid:i.isPaid===true,paidAt:i.paidAt||null}))})),
-      recurrences:s.recurrences.map(r=>({id:r.id,title:r.title,amount:r.amount,startDate:r.startDate}))};
+      recurrences:s.recurrences.map(r=>({id:r.id,type:r.type||'expense',title:r.title,amount:r.amount,startDate:r.startDate,category:r.category,accountId:r.accountId,notes:r.notes||'',endMonth:r.endMonth||null}))};
   },
   settings(data) {
     const s=get();
@@ -231,6 +231,52 @@ export const store = {
     }
     if(data.isPaid!==undefined) {t.isPaid=Boolean(data.isPaid);t.paidAt=t.isPaid?new Date().toISOString():null;}
     persist();return t;
+  },
+  // Editar el plan mensual sin borrar historial de recibos/pagos por mes.
+  editRecurrence(id,data){
+    const prior=get(),copy=structuredClone(prior),rec=copy.recurrences.find(x=>x.id===id);
+    if(!rec)throw new Error('Movimiento mensual fijo no encontrado');
+    if(data.type!==undefined&&data.type!==(rec.type||'expense'))throw new Error('No se puede cambiar el tipo de un movimiento fijo');
+    if(data.title!==undefined)rec.title=titleField(data.title);
+    if(data.amount!==undefined)rec.amount=finiteAmount(data.amount);
+    if(data.category!==undefined)rec.category=categoryField(data.category);
+    if(data.accountId!==undefined)rec.accountId=validateAccount(copy,data.accountId);
+    if(data.notes!==undefined)rec.notes=clampText(data.notes);
+    if(data.startDate!==undefined)rec.startDate=dateField(data.startDate);
+    state=copy;try{persist();}catch(e){state=prior;throw e;}
+    return {id:rec.id,type:rec.type||'expense',title:rec.title,amount:rec.amount,startDate:rec.startDate};
+  },
+  // Cambio atómico del estado pagado/cobrado de varios movimientos visibles del mes.
+  updateMovementStatuses({ids,isPaid,month}){
+    if(!Array.isArray(ids)||ids.length<1||ids.length>100||
+      ids.some(id=>typeof id!=='string'||id.length>128)||new Set(ids).size!==ids.length)
+      throw new Error('Seleccioná entre 1 y 100 movimientos diferentes');
+    if(typeof isPaid!=='boolean')throw new Error('El estado debe ser verdadero o falso');
+    if(typeof month!=='string'||!/^\d{4}-\d{2}$/.test(month))
+      throw new Error('Mes de movimientos inválido');
+    const previous=get(),working=structuredClone(previous);
+    const visible=project(working,month).rows;
+    const picked=ids.map(id=>{
+      const row=visible.find(r=>r.id===id);
+      if(!row)throw new Error('Movimiento no encontrado en el mes seleccionado');
+      if(row.isInstallment)return {kind:'installment',value:working.purchases.flatMap(p=>p.installments).find(i=>i.id===row.installmentId)};
+      if(row.isRecurring)return {kind:'recurrence',value:working.recurrences.find(r=>r.id===row.recurrenceId)};
+      return {kind:'transaction',value:working.transactions.find(t=>t.id===id)};
+    });
+    if(picked.some(p=>!p.value))throw new Error('Uno de los movimientos no existe');
+    for(const p of picked){
+      if(p.kind==='recurrence'){
+        p.value.paidMonths??={};p.value.paidMonths[month]=isPaid;
+      }else if(p.kind==='installment'){
+        if(p.value.isPaid===isPaid)continue;
+        p.value.isPaid=isPaid;p.value.paidAt=isPaid?new Date().toISOString():null;
+        p.value.paidDate=isPaid?isoDay(new Date()):null;
+      }else{
+        p.value.isPaid=isPaid;p.value.paidAt=isPaid?new Date().toISOString():null;
+      }
+    }
+    state=working;try{persist();}catch(error){state=previous;throw error;}
+    return {count:ids.length,isPaid,month};
   },
   // Editar un préstamo existente conservando el ID del plan y de cada cuota.
   // Ningún cambio histórico destructivo de un pago confirmado se permite.

@@ -1,10 +1,12 @@
-import {setupLoanEditor,previousMonthsCount} from './loan-edit.js?v=18';
-import {setupInstallments} from './installments.js?v=18';
-import {setupExpress} from './express.js?v=18';
-import {setupAIUsage} from './ai-usage.js?v=18';
-import {providerFor,saveProvider} from './providers.js?v=18';
-import { setupChat } from './chat.js?v=18';
-import { setupAIDiagnostics } from './diagnostics.js?v=18';
+import {sortMovements} from './movement-sort.js?v=19';
+import {tableMarkup} from './movement-table.js?v=19';
+import {setupLoanEditor,previousMonthsCount} from './loan-edit.js?v=19';
+import {setupInstallments} from './installments.js?v=19';
+import {setupExpress} from './express.js?v=19';
+import {setupAIUsage} from './ai-usage.js?v=19';
+import {providerFor,saveProvider} from './providers.js?v=19';
+import { setupChat } from './chat.js?v=19';
+import { setupAIDiagnostics } from './diagnostics.js?v=19';
 const $ = id => document.getElementById(id);
 const $$ = selector => [...document.querySelectorAll(selector)];
 const fmt = n => new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS',maximumFractionDigits:2}).format(Number(n||0));
@@ -15,7 +17,7 @@ const iconFor = c => ({Comida:'◈',Servicios:'⌁',Hogar:'⌂',Transporte:'➤'
 const types = {dashboard:['Resumen','Tu dinero, más claro.','Una mirada simple a tus finanzas.'],movements:['Movimientos','Cada peso cuenta.','Buscá, controlá y administrá tus movimientos.'],cards:['Cuentas y tarjetas','Todos tus medios de pago.','Compras, tarjetas y vencimientos.'],reports:['Estadísticas','Conocé tus números.','Así se distribuye tu dinero.'],settings:['Configuración','A tu manera.','Ajustá la experiencia a tus necesidades.']};
 const categories = ['Comida','Servicios','Hogar','Transporte','Salud','Educación','Tecnología','Entretenimiento','Indumentaria','Deudas y préstamos','Tarjetas','Otros','Extra','Sueldo','Ventas'];
 let aiDiagnostics=null,aiUsagePanel=null,expressPanel=null,installmentsPanel=null,loanEditPanel=null;
-const state = {month:localDay().slice(0,7),data:null,auth:false,aiEnabled:false,view:'dashboard',draft:null,editId:null,accountEditId:null,recognizer:null,recorder:null,audioStream:null,audioChunks:[],deferredInstall:null};
+const state = {month:localDay().slice(0,7),data:null,auth:false,aiEnabled:false,view:'dashboard',draft:null,editId:null,recurrenceEditId:null,accountEditId:null,recognizer:null,recorder:null,audioStream:null,audioChunks:[],deferredInstall:null,movementView:localStorage.getItem('gastosapp-movement-view')==='table'?'table':'list',sortKey:'date',sortDirection:'desc',selectedMovements:new Set()};
 function toast(message){const t=$('toast');t.textContent=message;t.classList.add('visible');clearTimeout(toast.timer);toast.timer=setTimeout(()=>t.classList.remove('visible'),4200);}
 async function request(url, method='GET',body) {
   const options={method,credentials:'same-origin',headers:{}};
@@ -55,7 +57,7 @@ function render(){
   const d=state.data;if(!d)return;
   $('kpiBalance').textContent=fmt(d.balance);$('kpiIncome').textContent=fmt(d.income);
   $('kpiExpense').textContent=fmt(d.expenses);$('kpiPending').textContent=fmt(d.pending);
-  $('incomeNote').textContent=fmt(d.salary)+' sueldo + '+fmt(d.extraIncome)+' extra';
+  $('incomeNote').textContent=fmt(d.incomeReceived||0)+' cobrado · '+fmt(d.incomePending||0)+' por cobrar';
   $('pendingNote').textContent=d.upcoming.length+' vencimiento(s) pendiente(s)';
   $('expenseNote').textContent=fmt(d.paid)+' ya pagados';
   $('budgetPercent').textContent=d.income>0?Math.round(d.expenses/d.income*100)+'%':'—';
@@ -67,11 +69,11 @@ function render(){
   $('expressAutoSetting').checked=d.settings.expressAutoConfirm===true;
   expressPanel?.settingsChanged(d.settings.expressAutoConfirm===true);
   $('recentList').innerHTML=rowsMarkup(d.rows.slice(0,7),false);
-  $('allMovements').innerHTML=rowsMarkup(filteredRows(),true);
+  renderMovements();
   $('upcomingList').innerHTML=upcomingMarkup(d.upcoming.slice(0,5));
   $('categoryChart').innerHTML=categoryMarkup(d.categories);
   $('reportCategories').innerHTML=categoryMarkup(d.categories);
-  $('paidSplit').innerHTML='<div class="split-item"><span>✓ Ya pagado</span><strong>'+fmt(d.paid)+'</strong></div><div class="split-item"><span>◷ Por pagar</span><strong>'+fmt(d.pending)+'</strong></div><div class="split-item"><span>Ingreso mensual estimado</span><strong>'+fmt(d.income)+'</strong></div>';
+  $('paidSplit').innerHTML='<div class="split-item"><span>✓ Ya pagado</span><strong>'+fmt(d.paid)+'</strong></div><div class="split-item"><span>◷ Por pagar</span><strong>'+fmt(d.pending)+'</strong></div><div class="split-item"><span>✓ Ya cobrado</span><strong>'+fmt(d.incomeReceived||0)+'</strong></div><div class="split-item"><span>◷ Por cobrar</span><strong>'+fmt(d.incomePending||0)+'</strong></div>';
   $('accountCards').innerHTML=d.accounts.map(a=>'<article class="account-card '+escape(a.kind)+'"><span class="account-icon">'+(a.kind==='credit'?'▣':a.kind==='cash'?'＄':'◈')+'</span><button data-edit-account="'+escape(a.id)+'" aria-label="Editar '+escape(a.name)+'">Editar</button><strong>'+escape(a.name)+'</strong><small>'+({credit:'Tarjeta de crédito',debit:'Débito',cash:'Efectivo',wallet:'Billetera virtual',transfer:'Transferencia',other:'Otro'}[a.kind]||a.kind)+(a.kind==='credit'?' · Cierre '+a.closingDay+' / Vto. '+a.dueDay:'')+'</small></article>').join('');
   $('purchasesList').innerHTML=d.purchases.length ? d.purchases.map(p=>
     '<div class="purchase-row installment-plan-row"><div><strong>'+escape(p.title)+'</strong><small>'+
@@ -95,7 +97,23 @@ function filteredRows(){
   if(q)data=data.filter(x=>(x.title+' '+x.category+' '+(account(x.accountId)?.name||'')).toLocaleLowerCase('es-AR').includes(q));
   if(t==='pending')data=data.filter(x=>x.type==='expense'&&!x.isPaid);
   else if(t!=='all')data=data.filter(x=>x.type===t);
-  return data;
+  return sortMovements(data,{key:state.sortKey,direction:state.sortDirection,getAccount:id=>account(id)?.name||''});
+}
+function renderMovements(){
+ const rows=filteredRows();
+ const visible=new Set(rows.map(r=>r.id));
+ for(const id of state.selectedMovements)if(!visible.has(id))state.selectedMovements.delete(id);
+ $('allMovements').innerHTML=state.movementView==='table'?tableMarkup(rows,{
+   fmt,dateLabel,account,escape,selected:state.selectedMovements,sortKey:state.sortKey,sortDirection:state.sortDirection
+ }):rowsMarkup(rows,true);
+ $('allMovements').classList.toggle('movement-table-active',state.movementView==='table');
+ $('movementListButton').setAttribute('aria-pressed',String(state.movementView==='list'));
+ $('movementTableButton').setAttribute('aria-pressed',String(state.movementView==='table'));
+ const chosen=state.selectedMovements.size;
+ $('movementBulk').classList.toggle('hidden',state.movementView!=='table'||chosen===0);
+ $('movementBulkCount').textContent=chosen+' movimiento'+(chosen===1?'':'s')+' seleccionado'+(chosen===1?'':'s');
+ $('movementDirection').textContent=state.sortDirection==='asc'?'↑ Menor a mayor':'↓ Mayor a menor';
+ $('movementSort').value=state.sortKey;
 }
 function rowsMarkup(rows,full){
   if(!rows.length)return '<div class="empty">No hay movimientos en este mes. <br>Probá registrar uno hablando con el asistente ✦</div>';
@@ -103,10 +121,10 @@ function rowsMarkup(rows,full){
     const income=t.type==='income',id=t.isInstallment?t.installmentId:t.id,tag=t.isInstallment?' · Cuota '+t.number+'/'+t.total:'';
     const subtitle=(t.isInstallment?(t.plannedDate?'Programada '+dateLabel(t.plannedDate)+' · ':'')+
       'Vto. original '+dateLabel(t.originalDueDate||t.dueDate)+' · ':t.dueDate?'Vence '+dateLabel(t.dueDate)+' · ':'')+dateLabel(t.date)+' · '+escape(t.category)+' · '+escape(account(t.accountId)?.name||'Sin medio')+tag+(t.isRecurring?' · Fijo mensual':'');
-    const status=income?'Ingreso':t.isPaid?'Pagado':'Pendiente';
-    return '<div class="tx-row"><span class="tx-icon '+(income?'income':'')+'">'+iconFor(t.category)+'</span><div class="tx-info"><strong>'+escape(t.title)+'</strong><small>'+subtitle+'</small></div><div class="tx-amount"><strong class="'+(income?'incoming':'')+'">'+(income?'+':'−')+fmt(t.amount)+'</strong><small>'+status+'</small></div>'+(full?'<div class="tx-ops">'+(!income?'<button class="action-mini" data-paid="'+escape(id)+'" data-next-paid="'+(!t.isPaid)+'" title="'+(t.isPaid?'Marcar pendiente':'Marcar pagado')+'">'+(t.isPaid?'↶':'✓')+'</button>':'')+(t.isInstallment&&t.financingType==='loan'?
+    const status=t.isPaid?(income?'Cobrado':'Pagado'):(income?'Por cobrar':'Pendiente');
+    return '<div class="tx-row"><span class="tx-icon '+(income?'income':'')+'">'+iconFor(t.category)+'</span><div class="tx-info"><strong>'+escape(t.title)+'</strong><small>'+subtitle+'</small></div><div class="tx-amount"><strong class="'+(income?'incoming':'')+'">'+(income?'+':'−')+fmt(t.amount)+'</strong><small>'+status+'</small></div>'+(full?'<div class="tx-ops">'+'<button class="action-mini" data-paid="'+escape(id)+'" data-next-paid="'+(!t.isPaid)+'" title="'+(t.isPaid?'Marcar pendiente':income?'Marcar cobrado':'Marcar pagado')+'">'+(t.isPaid?'↶':'✓')+'</button>'+(t.isInstallment&&t.financingType==='loan'?
 '<button class="action-mini" data-loan-edit="'+escape(t.purchaseId)+'" title="Editar préstamo">✎</button>':
-!t.isInstallment&&!t.isRecurring?'<button class="action-mini" data-edit="'+escape(t.id)+'" title="Editar">✎</button>':'')+'<button class="action-mini" data-delete="'+escape(t.isInstallment?t.purchaseId:t.isRecurring?t.recurrenceId:t.id)+'" title="'+(t.isInstallment?'Eliminar compra completa':'Eliminar')+'">✕</button></div>':'')+'</div>';
+t.isRecurring?'<button class="action-mini" data-edit-recurrence="'+escape(t.recurrenceId)+'" title="Editar movimiento fijo">✎</button>':!t.isInstallment?'<button class="action-mini" data-edit="'+escape(t.id)+'" title="Editar">✎</button>':'')+'<button class="action-mini" data-delete="'+escape(t.isInstallment?t.purchaseId:t.isRecurring?t.recurrenceId:t.id)+'" title="'+(t.isInstallment?'Eliminar compra completa':'Eliminar')+'">✕</button></div>':'')+'</div>';
   }).join('');
 }
 function upcomingMarkup(rows) {
@@ -141,13 +159,15 @@ function refreshNewLoanOverdue(){
 function setTransactionMode(){
   const type=$('movementForm').elements.movementType.value, isIncome=type==='income';
   const a=account($('txAccount').value),count=Number($('txInstallments').value);
-  if(isIncome){$('txInstallments').value='1';$('txRecurring').checked=false;$('txDueDate').value='';}
+  if(isIncome){$('txInstallments').value='1';$('txDueDate').value='';}
   const many=!isIncome&&Number($('txInstallments').value)>1;
   const financing=$('txFinancingType').value;
   const loan=many&&financing==='loan';
   const card=!isIncome&&a?.kind==='credit'&&(!many||financing==='card');
   $('installmentsField').classList.toggle('hidden',isIncome);
-  $('recurringField').classList.toggle('hidden',isIncome||many);
+  $('recurringField').classList.toggle('hidden',many);
+  $('txRecurringLabel').textContent=isIncome?'Repetir todos los meses (ingreso fijo)':'Repetir todos los meses (gasto fijo)';
+  $('recurringIncomeNote').classList.toggle('hidden',!isIncome||!$('txRecurring').checked);
   $('txFinanceFields').classList.toggle('hidden',!many);
   $('txFirstDueField').classList.toggle('hidden',!loan);
   $('txFirstDueDate').required=loan&&!state.editId;
@@ -168,7 +188,7 @@ function setTransactionMode(){
   }
 }
 function openMovement(item){
-  state.editId=item?.id||null;
+  state.editId=item?.id||null;state.recurrenceEditId=null;
   $('movementForm').reset();
   $('movementDialogTitle').textContent=item?'Editar movimiento':'Nuevo movimiento';
   $('movementForm').elements.movementType.value=item?.type||'expense';
@@ -184,12 +204,24 @@ function openMovement(item){
   $('txFirstDueDate').value='';
   $('txOverdueChoice').value='';
   $('txRecurring').checked=false;
+  $('txRecurring').disabled=Boolean(item);
   $('txPaid').checked=item?item.isPaid:false;
   $('txNotes').value=item?.notes||'';
   $$('.segmented input').forEach(x=>x.disabled=!!item);
   $('txInstallments').disabled=!!item;
   setTransactionMode();
   showDialog('movementDialog');
+}
+function openRecurrence(item){
+ const recurrence=state.data?.recurrences.find(r=>r.id===item?.recurrenceId);
+ if(!recurrence)return;
+ openMovement({...recurrence,type:recurrence.type||'expense',date:recurrence.startDate,
+   isPaid:Boolean(item.isPaid),dueDate:null,notes:recurrence.notes||''});
+ state.editId=null;state.recurrenceEditId=recurrence.id;
+ $('movementDialogTitle').textContent='Editar ingreso/gasto fijo mensual';
+ toast('La edición de un fijo cambia el importe de todos los meses, también los anteriores.');
+ $('txRecurring').checked=true;$('txRecurring').disabled=true;
+ setTransactionMode();
 }
 async function saveMovement(e){
   e.preventDefault();
@@ -202,8 +234,13 @@ async function saveMovement(e){
     isRecurring:$('txRecurring').checked,
     isPaid:$('txPaid').checked,notes:$('txNotes').value};
   try {
-    if(state.editId)await request('/api/transactions/'+state.editId,'PATCH',payload);
+    if(state.recurrenceEditId)await request('/api/recurrences/'+state.recurrenceEditId,'PATCH',{
+      type:payload.type,title:payload.title,amount:payload.amount,startDate:payload.date,
+      category:payload.category,accountId:payload.accountId,notes:payload.notes
+    });
+    else if(state.editId)await request('/api/transactions/'+state.editId,'PATCH',payload);
     else await request('/api/transactions','POST',payload);
+    state.recurrenceEditId=null;
     closeDialogs();await refresh();toast('Movimiento guardado correctamente');
   }catch(err){toast(err.message);}
 }
@@ -373,9 +410,45 @@ function events(){
   $('txFinancingType').addEventListener('change',setTransactionMode);
   $('txAmount').addEventListener('input',()=>{if(Number($('txInstallments').value)>1)setTransactionMode();});
   $('txRecurring').addEventListener('change',setTransactionMode);
-  $('movementSearch').addEventListener('input',()=>{$('allMovements').innerHTML=rowsMarkup(filteredRows(),true);});
-  $('typeFilter').addEventListener('change',()=>{$('allMovements').innerHTML=rowsMarkup(filteredRows(),true);});
-  $('monthFilter').addEventListener('change',async e=>{if(!e.target.value)return;state.month=e.target.value;try{await refresh();}catch(err){toast(err.message);}});
+  $('movementSearch').addEventListener('input',()=>{state.selectedMovements.clear();renderMovements();});
+  $('typeFilter').addEventListener('change',()=>{state.selectedMovements.clear();renderMovements();});
+  $('movementSort').addEventListener('change',e=>{state.sortKey=e.target.value;renderMovements();});
+  $('movementDirection').addEventListener('click',()=>{state.sortDirection=state.sortDirection==='asc'?'desc':'asc';renderMovements();});
+  for(const [id,view] of [['movementListButton','list'],['movementTableButton','table']])
+    $(id).addEventListener('click',()=>{
+      state.movementView=view;state.selectedMovements.clear();
+      localStorage.setItem('gastosapp-movement-view',view);renderMovements();
+    });
+  $('allMovements').addEventListener('change',e=>{
+    if(e.target.matches('#movementSelectAll')){
+      if(e.target.checked)for(const row of filteredRows())state.selectedMovements.add(row.id);
+      else state.selectedMovements.clear();
+      renderMovements();
+    }else if(e.target.matches('[data-select-movement]')){
+      const id=e.target.dataset.selectMovement;
+      if(e.target.checked)state.selectedMovements.add(id);else state.selectedMovements.delete(id);
+      renderMovements();
+    }
+  });
+  $('allMovements').addEventListener('click',e=>{
+    const col=e.target.closest('[data-sort-column]');if(!col)return;
+    const key=col.dataset.sortColumn;
+    state.sortDirection=state.sortKey===key&&state.sortDirection==='asc'?'desc':'asc';
+    state.sortKey=key;renderMovements();
+  });
+  for(const [id,paid] of [['movementBulkPaid',true],['movementBulkPending',false]])
+    $(id).addEventListener('click',async()=>{
+      const ids=[...state.selectedMovements];if(!ids.length)return;
+      if(!confirm((paid?'Marcar pagados/cobrados':'Marcar pendientes')+' '+ids.length+' movimientos?'))return;
+      $('movementBulkPaid').disabled=true;$('movementBulkPending').disabled=true;
+      try{
+        await request('/api/movements/status/batch','PATCH',{ids,isPaid:paid,month:state.month});
+        state.selectedMovements.clear();await refresh();toast('Se actualizaron '+ids.length+' movimientos.');
+      }catch(err){toast(err.message);}
+      finally{$('movementBulkPaid').disabled=false;$('movementBulkPending').disabled=false;}
+    });
+  $('movementBulkClear').addEventListener('click',()=>{state.selectedMovements.clear();renderMovements();});
+  $('monthFilter').addEventListener('change',async e=>{if(!e.target.value)return;state.month=e.target.value;state.selectedMovements.clear();try{await refresh();}catch(err){toast(err.message);}});
   $('newAccount').addEventListener('click',()=>openAccount());
   $('accountKind').addEventListener('change',()=>{$('creditFields').classList.toggle('hidden',$('accountKind').value!=='credit');});
   $('accountForm').addEventListener('submit',saveAccount);
@@ -387,7 +460,8 @@ function events(){
   $('loginForm').addEventListener('submit',async e=>{e.preventDefault();try{await request('/api/login','POST',{password:$('loginPassword').value});hideLogin();$('loginPassword').value='';$('loginError').textContent='';await refresh();}catch(err){$('loginError').textContent=err.message;}});
   $('themeToggle').addEventListener('click',()=>{const t=document.documentElement.dataset.theme==='light'?'dark':'light';document.documentElement.dataset.theme=t;localStorage.setItem('gastos-theme',t);$('themeToggle').textContent=t==='light'?'☀':'☾';});
   document.addEventListener('click',async e=>{
-    const pay=e.target.closest('[data-paid]'),del=e.target.closest('[data-delete]'),edit=e.target.closest('[data-edit]'),acc=e.target.closest('[data-edit-account]'),
+    const pay=e.target.closest('[data-paid]'),del=e.target.closest('[data-delete]'),edit=e.target.closest('[data-edit]'),
+      editRecurrence=e.target.closest('[data-edit-recurrence]'),acc=e.target.closest('[data-edit-account]'),
       installments=e.target.closest('[data-installment-plan]'),
       loanEdit=e.target.closest('[data-loan-edit]');
     try{
@@ -402,8 +476,15 @@ function events(){
         }else await request('/api/paid/'+pay.dataset.paid,'PATCH',{isPaid:pay.dataset.nextPaid==='true'});
         await refresh();toast('Estado actualizado');
       }
-      else if(del){if(!confirm('¿Eliminar este movimiento? Si es una compra financiada se eliminarán todas sus cuotas.'))return;
+      else if(del){
+        const item=state.data?.rows.find(r=>r.id===del.dataset.delete||r.recurrenceId===del.dataset.delete||r.purchaseId===del.dataset.delete);
+        const prompt=item?.isRecurring?'¿Eliminar el ingreso o gasto fijo de TODOS los meses, incluido el historial?':
+          item?.isInstallment?'¿Eliminar el préstamo/compra completo, con todas sus cuotas?':'¿Eliminar este movimiento?';
+        if(!confirm(prompt))return;
         await request('/api/transactions/'+del.dataset.delete,'DELETE');await refresh();toast('Movimiento eliminado');}
+      else if(editRecurrence){const t=state.data.rows.find(x=>x.recurrenceId===editRecurrence.dataset.editRecurrence);
+        if(t)openRecurrence(t);
+      }
       else if(edit){const t=state.data.rows.find(x=>x.id===edit.dataset.edit&&!x.isInstallment);if(t)openMovement(t);}
       else if(acc){openAccount(state.data.accounts.find(a=>a.id===acc.dataset.editAccount));}
     }catch(err){toast(err.message);}
