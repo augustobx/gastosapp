@@ -1,7 +1,7 @@
-import {getNaturalVoice} from './speech-request.js?v=15';
-import {voiceFailure,spokenExcerpt} from './voice-errors.js?v=15';
-import {waitTask} from './ai-tasks.js?v=15';
-import {providerFor,voiceFor} from './providers.js?v=15';
+import {getNaturalVoice} from './speech-request.js?v=16';
+import {voiceFailure,spokenExcerpt} from './voice-errors.js?v=16';
+import {waitTask} from './ai-tasks.js?v=16';
+import {providerFor,voiceFor} from './providers.js?v=16';
 // Asistente conversacional: IA optativa para comprensión, voz y transcripción.
 // Ningún movimiento se guarda hasta confirmar toda la tanda.
 export function setupChat({request,refresh,getAccounts,fmt,dateLabel,hasAI,openQuick,openDiagnostics}){
@@ -346,7 +346,7 @@ export function setupChat({request,refresh,getAccounts,fmt,dateLabel,hasAI,openQ
      'No se pudo iniciar la grabación: '+e.message));
 
  }
- document.querySelectorAll('.assistant-open').forEach(el=>el.addEventListener('click',open));
+ document.querySelectorAll('.assistant-chat-open').forEach(el=>el.addEventListener('click',open));
  document.querySelectorAll('#chatDialog .close-dialog').forEach(el=>el.addEventListener('click',close));
  dlg.addEventListener('close',()=>{chat.closed=true;stopMic();stopVoice();});
  $('chatSend').addEventListener('click',()=>void processMessage($('chatInput').value));
