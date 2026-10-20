@@ -11,6 +11,7 @@ import { GEMINI_MODELS,GEMINI_VOICES,geminiChatTurn,geminiTranscribe,geminiSpeec
 import {makeJobs} from './lib/ai-jobs.js';
 import {createSpeechJobs} from './lib/speech-jobs.js';
 import {usageLedger} from './lib/ai-usage.js';
+import {parseExpress} from './public/express-parse.js';
 
 const port=Number(process.env.PORT||3000);
 const password=process.env.APP_PASSWORD||'';
@@ -97,6 +98,28 @@ const wrap=fn=>async(req,res)=>{try{const value=await fn(req,res);if(!res.header
     if(!res.headersSent)res.status(e.status||400).json(detail);}};
 app.get('/api/ai/tasks/:id',limited(50),wrap(req=>aiJobs.get(jobOwner(req),req.params.id)));
 app.get('/api/ai/usage',limited(45),wrap(req=>usageLedger.report(['today','month','all'].includes(req.query.period)?req.query.period:'month')));
+// Modo Express: el servidor vuelve a interpretar el texto antes de autoguardar.
+// El toggle en Configuración nunca permite que el cliente se saltee la validación.
+app.post('/api/express/save',limited(30),wrap(req=>{
+ const phrase=String(req.body?.phrase||'');
+ const saved=store.snapshot();
+ const analysis=parseExpress(phrase,saved.accounts);
+ const automatic=req.body?.auto===true;
+ if(analysis.requiresAdvanced)throw Object.assign(new Error('Esta frase menciona varios movimientos, cuotas, vencimientos o un ingreso. Usá el asistente IA para no perder datos.'),{status:422,code:'express_requires_advanced'});
+ if(automatic){
+  if(saved.settings?.expressAutoConfirm!==true)
+   throw Object.assign(new Error('Autoconfirmación desactivada en Configuración.'),{status:409,code:'express_auto_disabled'});
+  if(!analysis.autoEligible)
+   throw Object.assign(new Error('Este gasto necesita revisión: '+analysis.issues.join(' ')),{
+    status:422,code:'express_review_required'
+   });
+ }
+ const transaction=automatic?analysis.draft:req.body?.transaction;
+ if(!transaction||typeof transaction!=='object'||transaction.type!=='expense')
+  throw Object.assign(new Error('Completá y verificá el gasto antes de guardar.'),{status:422,code:'invalid_express_expense'});
+ const result=store.addBatch([transaction],req.body?.requestId);
+ return {...result,mode:'express',automatic};
+}));
 app.get('/api/state',wrap(req=>store.snapshot(req.query.month||monthOf(isoDay(new Date())))));
 app.patch('/api/settings',wrap(req=>store.settings(req.body)));
 app.post('/api/accounts',wrap(req=>store.addAccount(req.body)));

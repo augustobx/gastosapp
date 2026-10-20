@@ -7,7 +7,7 @@ const dataFile = path.join(dataDir, 'gastosapp-v2.json');
 fs.mkdirSync(dataDir, {recursive:true});
 const defaults = () => ({
   version: 2,
-  settings: {salary:0, currency:'ARS'},
+  settings: {salary:0, currency:'ARS', expressAutoConfirm:false},
   accounts: [
     {id:'cash', name:'Efectivo', kind:'cash'},
     {id:'transfer', name:'Transferencia', kind:'transfer'},
@@ -28,7 +28,7 @@ function get() {
   if (parsed.version !== 2 || !Array.isArray(parsed.transactions) || !Array.isArray(parsed.purchases)) {
     throw new Error('Esquema incompatible. Revisar respaldo antes de continuar.');
   }
-  state = {...parsed, recurrences:Array.isArray(parsed.recurrences)?parsed.recurrences:[]};
+  state = {...parsed, settings:{...parsed.settings,expressAutoConfirm:parsed.settings?.expressAutoConfirm===true}, recurrences:Array.isArray(parsed.recurrences)?parsed.recurrences:[]};
   return state;
 }
 function persist() {
@@ -107,6 +107,10 @@ export const store = {
   },
   settings(data) {
     const s=get();
+    if(data.expressAutoConfirm!==undefined){
+      if(typeof data.expressAutoConfirm!=='boolean')throw new Error('Configuración de autoconfirmación inválida');
+      s.settings.expressAutoConfirm=data.expressAutoConfirm;
+    }
     if (data.salary !== undefined) {
       const n=Number(data.salary);
       if (!Number.isFinite(n)||n<0||n>1e12) throw new Error('Sueldo inválido');

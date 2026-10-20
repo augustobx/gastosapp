@@ -1,7 +1,8 @@
-import {setupAIUsage} from './ai-usage.js?v=15';
-import {providerFor,saveProvider} from './providers.js?v=15';
-import { setupChat } from './chat.js?v=15';
-import { setupAIDiagnostics } from './diagnostics.js?v=15';
+import {setupExpress} from './express.js?v=16';
+import {setupAIUsage} from './ai-usage.js?v=16';
+import {providerFor,saveProvider} from './providers.js?v=16';
+import { setupChat } from './chat.js?v=16';
+import { setupAIDiagnostics } from './diagnostics.js?v=16';
 const $ = id => document.getElementById(id);
 const $$ = selector => [...document.querySelectorAll(selector)];
 const fmt = n => new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS',maximumFractionDigits:2}).format(Number(n||0));
@@ -11,7 +12,7 @@ const dateLabel = s => s ? s.slice(8,10)+'/'+s.slice(5,7)+'/'+s.slice(0,4) : '';
 const iconFor = c => ({Comida:'◈',Servicios:'⌁',Hogar:'⌂',Transporte:'➤',Salud:'✚',Educación:'▤','Deudas y préstamos':'▧',Tecnología:'▣',Entretenimiento:'✦',Indumentaria:'✧',Extra:'↗',Sueldo:'↗',Ventas:'↗'})[c]||'◉';
 const types = {dashboard:['Resumen','Tu dinero, más claro.','Una mirada simple a tus finanzas.'],movements:['Movimientos','Cada peso cuenta.','Buscá, controlá y administrá tus movimientos.'],cards:['Cuentas y tarjetas','Todos tus medios de pago.','Compras, tarjetas y vencimientos.'],reports:['Estadísticas','Conocé tus números.','Así se distribuye tu dinero.'],settings:['Configuración','A tu manera.','Ajustá la experiencia a tus necesidades.']};
 const categories = ['Comida','Servicios','Hogar','Transporte','Salud','Educación','Tecnología','Entretenimiento','Indumentaria','Deudas y préstamos','Tarjetas','Otros','Extra','Sueldo','Ventas'];
-let aiDiagnostics=null,aiUsagePanel=null;
+let aiDiagnostics=null,aiUsagePanel=null,expressPanel=null;
 const state = {month:localDay().slice(0,7),data:null,auth:false,aiEnabled:false,view:'dashboard',draft:null,editId:null,accountEditId:null,recognizer:null,recorder:null,audioStream:null,audioChunks:[],deferredInstall:null};
 function toast(message){const t=$('toast');t.textContent=message;t.classList.add('visible');clearTimeout(toast.timer);toast.timer=setTimeout(()=>t.classList.remove('visible'),4200);}
 async function request(url, method='GET',body) {
@@ -61,6 +62,8 @@ function render(){
   $('reportBalance').textContent=fmt(d.balance);
   $('reportInsight').textContent=d.balance>=0?'Te queda presupuesto para este mes.':'Revisá gastos y cuotas pendientes.';
   $('salaryInput').value=d.settings.salary||0;
+  $('expressAutoSetting').checked=d.settings.expressAutoConfirm===true;
+  expressPanel?.settingsChanged(d.settings.expressAutoConfirm===true);
   $('recentList').innerHTML=rowsMarkup(d.rows.slice(0,7),false);
   $('allMovements').innerHTML=rowsMarkup(filteredRows(),true);
   $('upcomingList').innerHTML=upcomingMarkup(d.upcoming.slice(0,5));
@@ -271,6 +274,21 @@ async function toggleVoice(){
 function events(){
   aiDiagnostics=setupAIDiagnostics();
   aiUsagePanel=setupAIUsage({request});
+  expressPanel=setupExpress({
+    request,refresh,getAccounts:()=>state.data?.accounts||[],fmt,
+    onSettingsSaved:value=>{$('expressAutoSetting').checked=value; if(state.data)state.data.settings.expressAutoConfirm=value;},
+    onSaved:()=>toast('✓ Gasto guardado')
+  });
+  $('expressAutoSetting').addEventListener('change',async()=>{
+    const input=$('expressAutoSetting'),value=input.checked;input.disabled=true;
+    try{
+      await request('/api/settings','PATCH',{expressAutoConfirm:value});
+      if(state.data)state.data.settings.expressAutoConfirm=value;
+      expressPanel?.settingsChanged(value);
+      toast(value?'Autoconfirmación Express activada':'Autoconfirmación Express desactivada');
+    }catch(error){input.checked=!value;toast(error.message);}
+    finally{input.disabled=false;}
+  });
   setupChat({
     request,refresh,getAccounts:()=>state.data?.accounts||[],fmt,dateLabel,hasAI:()=>state.aiEnabled,
     openQuick:()=>{$('assistantPreview').classList.add('hidden');state.draft=null;showDialog('assistantDialog');},
