@@ -4,9 +4,9 @@ const fmt = n => new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS',
 const localDay = () => {const d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');};
 const escape = s => String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const dateLabel = s => s ? s.slice(8,10)+'/'+s.slice(5,7)+'/'+s.slice(0,4) : '';
-const iconFor = c => ({Comida:'◈',Servicios:'⌁',Hogar:'⌂',Transporte:'➤',Salud:'✚',Educación:'▤',Tecnología:'▣',Entretenimiento:'✦',Indumentaria:'✧',Extra:'↗',Sueldo:'↗',Ventas:'↗'})[c]||'◉';
+const iconFor = c => ({Comida:'◈',Servicios:'⌁',Hogar:'⌂',Transporte:'➤',Salud:'✚',Educación:'▤','Deudas y préstamos':'▧',Tecnología:'▣',Entretenimiento:'✦',Indumentaria:'✧',Extra:'↗',Sueldo:'↗',Ventas:'↗'})[c]||'◉';
 const types = {dashboard:['Resumen','Tu dinero, más claro.','Una mirada simple a tus finanzas.'],movements:['Movimientos','Cada peso cuenta.','Buscá, controlá y administrá tus movimientos.'],cards:['Cuentas y tarjetas','Todos tus medios de pago.','Compras, tarjetas y vencimientos.'],reports:['Estadísticas','Conocé tus números.','Así se distribuye tu dinero.'],settings:['Configuración','A tu manera.','Ajustá la experiencia a tus necesidades.']};
-const categories = ['Comida','Servicios','Hogar','Transporte','Salud','Educación','Tecnología','Entretenimiento','Indumentaria','Tarjetas','Otros','Extra','Sueldo','Ventas'];
+const categories = ['Comida','Servicios','Hogar','Transporte','Salud','Educación','Tecnología','Entretenimiento','Indumentaria','Deudas y préstamos','Tarjetas','Otros','Extra','Sueldo','Ventas'];
 const state = {month:localDay().slice(0,7),data:null,auth:false,aiEnabled:false,view:'dashboard',draft:null,editId:null,accountEditId:null,recognizer:null,recorder:null,audioStream:null,audioChunks:[],deferredInstall:null};
 function toast(message){const t=$('toast');t.textContent=message;t.classList.add('visible');clearTimeout(toast.timer);toast.timer=setTimeout(()=>t.classList.remove('visible'),4200);}
 async function request(url, method='GET',body) {

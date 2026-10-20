@@ -105,3 +105,52 @@ test('gasto con vencimiento en otro mes impacta al mes de vencimiento',()=>{
  assert.equal(oct.expenses,0);assert.equal(nov.expenses,890000);
  assert.equal(nov.pending,890000);assert.equal(nov.upcoming[0].dueDate,'2026-11-30');
 });
+
+test('transcripción: 890 000 a Juanma para cancelar el crédito a fin de mes',()=>{
+  const accounts=[{id:'visa',name:'Visa',kind:'credit'},{id:'master',name:'Mastercard',kind:'credit'}];
+  const r=interpret('890 000 a juanma para cancelar el crédito a fin de mes',accounts,new Date(2026,9,19));
+  assert.equal(r.type,'expense');
+  assert.equal(r.amount,890000);
+  assert.equal(r.title,'Pago de crédito · Juanma');
+  assert.equal(r.category,'Deudas y préstamos');
+  assert.equal(r.date,'2026-10-19');
+  assert.equal(r.dueDate,'2026-10-31');
+  assert.equal(r.isPaid,false);
+  assert.equal(r.installmentCount,1);
+  assert.equal(r.accountId,null);
+  assert.deepEqual(r.questions,[]);
+});
+test('variantes numéricas rioplatenses: miles con espacios y puntuación',()=>{
+  const cases={
+    '890 000':890000,
+    '1 200 000':1200000,
+    '890.000':890000,
+    '890,000':890000,
+    '890 mil':890000,
+    '890000':890000,
+    '1 200 000 a Juanma':1200000
+  };
+  for(const [text,amount] of Object.entries(cases)){
+    const parsed=interpret(text,[],new Date(2026,9,19));
+    assert.equal(parsed.amount,amount);
+  }
+});
+test('crédito como deuda no equivale a comprar con tarjeta de crédito',()=>{
+  const accounts=[{id:'visa',name:'Visa',kind:'credit'},{id:'debit',name:'Débito',kind:'debit'}];
+  const loan=interpret('Pagué 890 000 para cancelar el crédito con débito',accounts,new Date(2026,9,19));
+  assert.equal(loan.amount,890000);
+  assert.equal(loan.category,'Deudas y préstamos');
+  assert.equal(loan.accountId,'debit');
+  assert.equal(loan.isPaid,true);
+  const card=interpret('Compré ropa por 120000 con Visa en 3 cuotas',accounts,new Date(2026,9,19));
+  assert.equal(card.accountId,'visa');
+  assert.equal(card.category,'Indumentaria');
+  assert.equal(card.installmentCount,3);
+});
+test('no fusionar cantidad de cuotas con importes separados',()=>{
+  const parsed=interpret('3 cuotas de 20 mil en la Visa por un celular',
+    [{id:'visa',name:'Visa',kind:'credit'}],new Date(2026,9,19));
+  assert.equal(parsed.amount,20000);
+  assert.equal(parsed.installmentCount,3);
+  assert.ok(parsed.questions.length>0);
+});
