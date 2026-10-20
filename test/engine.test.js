@@ -154,3 +154,20 @@ test('no fusionar cantidad de cuotas con importes separados',()=>{
   assert.equal(parsed.installmentCount,3);
   assert.ok(parsed.questions.length>0);
 });
+
+test('tengo que pagar a Juanma 890,000 a fin de este mes',()=>{
+ const phrase='tengo que pagar a juanma 890,000 para cancelar el crédito a fin de este mes';
+ const r=interpret(phrase,[],new Date(2026,9,19));
+ assert.equal(r.title,'Pago de crédito · Juanma');
+ assert.equal(r.amount,890000);
+ assert.equal(r.date,'2026-10-19');
+ assert.equal(r.dueDate,'2026-10-31');
+ assert.equal(r.isPaid,false);
+ assert.equal(r.accountId,null);
+});
+test('el vencimiento de fin de mes no modifica la fecha de registro',()=>{
+ const d=interpret('Registrar 30000 de alquiler a fin de este mes',[],new Date(2026,9,8));
+ assert.equal(d.date,'2026-10-08');
+ assert.equal(d.dueDate,'2026-10-31');
+ assert.equal(d.isPaid,false);
+});
