@@ -129,6 +129,7 @@ app.post('/api/transactions',wrap(req=>store.add(req.body)));
 app.post('/api/transactions/batch',wrap(req=>store.addBatch(req.body.transactions,req.body.requestId)));
 app.patch('/api/transactions/:id',wrap(req=>store.editTransaction(req.params.id,req.body)));
 app.patch('/api/paid/:id',wrap(req=>store.setPaid(req.params.id,req.body.isPaid)));
+app.patch('/api/loans/:id',limited(25),wrap(req=>store.updateLoan(req.params.id,req.body)));
 app.patch('/api/installments/batch',limited(30),wrap(req=>store.updateInstallments({
   ids:req.body?.ids,action:req.body?.action,date:req.body?.date
 })));

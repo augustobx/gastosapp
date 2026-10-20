@@ -243,3 +243,15 @@ API autenticada PATCH /api/installments/batch con {ids,action:'plan'|'pay'|'unpa
 El motor de dictado y el chat ya no exigen tarjeta para un préstamo en cuotas. Si no se conoce el importe por cuota, el primer vencimiento o la interpretación es ambigua, requieren revisión: no se inventa un pago o una tarjeta. El Modo Express sigue siendo solo para gastos sencillos y deriva las cuotas al asistente avanzado. Las pruebas incluyen préstamo de 25 cuotas por débito, programación de dos cuotas de meses distintos para fin de mes, pago conjunto sin doble contabilidad, reversión, ausencia de tarjetas y compatibilidad con compras anteriores.
 
 No modificar el servidor/proxy u otros contenedores; desplegar con docker compose solo web. Hacer respaldo antes de aplicar.
+
+## Editar préstamos y recuperar cuotas vencidas (PWA v18)
+
+Se corrigió la imposibilidad de editar préstamos en cuotas y la ausencia de cuotas atrasadas en el resumen mensual.
+
+**Nuevo préstamo:** si la primera cuota vence en un mes anterior al actual, el formulario pregunta explícitamente «¿Tenés cuotas de meses anteriores todavía sin pagar?». Opciones: «Sí, sumarlas al pago de fin de este mes» y «Quiero revisar cuáles pagué, sin moverlas todavía». No supone pagos realizados. Si se elige la primera, solo se reprograman las cuotas anteriores que continúan pendientes, al último día del mes actual, sin cambiar su vencimiento original, ID ni estado de pago. El mes actual reflejará cuota del mes + las pendientes anteriores. Ejemplo: primera cuota 01/09/2026, importe ARS 200.000, 25 cuotas, ambas primeras sin pagar: **octubre ARS 400.000 previstos** al incluir septiembre.
+
+**Préstamo existente:** disponible «Editar préstamo» tanto desde Préstamos y compras en cuotas como desde el icono de edición de cuotas en Movimientos. Edita concepto, valor POR CUOTA, cantidad, primer vencimiento, medio, categoría y notas. Si hay cuotas ya pagadas, bloquea cambios de importe, cantidad y primer vencimiento, pero permite corregir otros datos. No deja eliminar cuotas con pago/planificación previa. Conserva IDs y pagos existentes.
+
+Si querés registrar que la cuota anterior se abonó, elegí «Revisarlas individualmente» y marcala pagada desde «Ver cuotas y programar», con fecha real. Incluir cuotas vencidas **no** las marca pagadas. Los cambios se realizan atómicamente sin crear gastos duplicados. Si una cuota ya está programada para un mes actual o futuro, no sobrescribe su planificación. Una cuota vencida que no se incluya permanece en el mes de vencimiento original hasta que la programes.
+
+API PATCH /api/loans/:id protegido por sesión; se mantiene el endpoint de cuotas existente. Cambios no destructivos al volumen de datos; tests cubren préstamo original 25 × $200.000, mes actual $200.000 inicialmente y $400.000 después de incluir cuota anterior, edición sin pagos, bloqueo retroactivo con pagos confirmados, metadatos y preservación de IDs. PWA cache v18. **Respaldar `/app/data/gastosapp-v2.json` antes de actualizar.**

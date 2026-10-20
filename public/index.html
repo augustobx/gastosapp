@@ -10,8 +10,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/app.css?v=17">
-  <script defer type="module" src="/app.js?v=17"></script>
+  <link rel="stylesheet" href="/app.css?v=18">
+  <script defer type="module" src="/app.js?v=18"></script>
   <title>GastosApp · Mis finanzas</title>
 </head>
 <body>
@@ -187,6 +187,17 @@
         <input id="txFirstDueDate" type="date">
         <small>Ejemplo: 30/09 para comenzar con una cuota vencida el mes pasado.</small>
       </label>
+      <div id="txOverdueBox" class="loan-overdue-choice hidden">
+        <label>¿Tenés cuotas de meses anteriores todavía sin pagar?
+          <select id="txOverdueChoice">
+            <option value="">Seleccioná una opción</option>
+            <option value="include">Sí, sumarlas al pago de fin de este mes</option>
+            <option value="review">Quiero revisar cuáles pagué, sin moverlas todavía</option>
+          </select>
+        </label>
+        <p id="txOverduePreview" class="form-hint"></p>
+        <small>Esto NO marca cuotas como pagadas. Vas a poder seleccionar las realmente abonadas desde «Ver cuotas y programar».</small>
+      </div>
     </div>
     <label>Notas (opcional)<textarea id="txNotes" rows="2" maxlength="450" placeholder="Algo más sobre este movimiento..."></textarea></label>
     <label class="checkbox-field" id="recurringField"><input id="txRecurring" type="checkbox"><span>Repetir todos los meses (gasto fijo)</span></label>
@@ -230,6 +241,39 @@
         <button type="button" class="btn btn-quiet express-close">Cerrar</button>
       </div>
     </div>
+  </dialog>
+
+  <dialog id="loanEditDialog" class="app-dialog loan-edit-dialog" aria-label="Editar préstamo existente">
+    <form id="loanEditForm" class="dialog-body">
+      <div class="dialog-heading"><div><span class="eyebrow">MODIFICAR PRÉSTAMO</span>
+        <h2>Editar crédito y cuotas</h2></div>
+        <button type="button" class="icon-btn loan-edit-close" aria-label="Cerrar">✕</button></div>
+      <p class="ai-fineprint">Los vencimientos originales y pagos confirmados se protegen. Si el préstamo tiene cuotas pagadas no podés alterar sus importes, cantidad o primer vencimiento.</p>
+      <label>Concepto del préstamo<input type="text" id="loanEditTitle" maxlength="140" required></label>
+      <div class="field-grid">
+        <label>Importe de CADA cuota ($)<input type="number" id="loanEditAmount" min="0.01" step="0.01" required></label>
+        <label>Cantidad de cuotas<input type="number" id="loanEditCount" min="2" max="60" step="1" required></label>
+      </div>
+      <div class="field-grid">
+        <label>Primer vencimiento<input type="date" id="loanEditFirstDue" required></label>
+        <label>Medio de pago<select id="loanEditAccount"></select></label>
+      </div>
+      <label>Categoría<select id="loanEditCategory"></select></label>
+      <label>Notas<textarea id="loanEditNotes" maxlength="450" rows="2"></textarea></label>
+      <div id="loanEditOverdueBox" class="loan-overdue-choice hidden">
+        <label>¿Tenés cuotas anteriores todavía pendientes?
+          <select id="loanEditOverdueChoice">
+            <option value="">Seleccioná una opción</option>
+            <option value="include">Sí, incluirlas en el pago de este mes</option>
+            <option value="review">Revisarlas individualmente sin mover fechas</option>
+          </select>
+        </label>
+        <p id="loanEditOverduePreview" class="form-hint"></p>
+      </div>
+      <p id="loanEditFeedback" role="status" class="ai-fineprint"></p>
+      <div class="dialog-actions"><button type="button" class="btn btn-muted loan-edit-close">Cancelar</button>
+      <button id="loanEditSubmit" type="submit" class="btn btn-primary">Guardar cambios del préstamo</button></div>
+    </form>
   </dialog>
 
   <dialog id="installmentDialog" class="app-dialog installment-dialog" aria-label="Cuotas y pagos programados">
