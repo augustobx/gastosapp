@@ -1,5 +1,5 @@
-import {waitTask} from './ai-tasks.js?v=11';
-import {providerFor,voiceFor} from './providers.js?v=11';
+import {waitTask} from './ai-tasks.js?v=12';
+import {providerFor,voiceFor} from './providers.js?v=12';
 // Asistente conversacional: IA optativa para comprensión, voz y transcripción.
 // Ningún movimiento se guarda hasta confirmar toda la tanda.
 export function setupChat({request,refresh,getAccounts,fmt,dateLabel,hasAI,openQuick,openDiagnostics}){

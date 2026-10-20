@@ -163,3 +163,7 @@ Modelos Gemini elegidos según soporte documentado:
 La capa gratuita depende del modelo, región, límites diarios, facturación y proyecto. Gemini NO reemplaza de forma automática a OpenAI y NO garantiza uso gratuito ilimitado. Las pruebas que generan texto/audio pueden consumir créditos; el test de conexión solo lista modelos.
 
 Seguridad y despliegue: `git pull --ff-only origin main` y `docker compose up -d --build --force-recreate web` dentro de GastosApp. Nunca borrar volúmenes ni tocar otros contenedores. Test HTTP 200 por proveedor antes de usar los micrófonos reales. El modo conversacional exige confirmación antes del guardado atómico.
+
+## Errores reales de tareas Gemini en el panel (v12)
+
+Cuando una tarea Gemini fallaba, el cliente descartaba los campos de error al convertir la respuesta en un objeto Error. La PWA v12 ahora conserva proveedor, HTTP de Google, codigo, mensaje y recomendacion. Hay tests que simulan errores HTTP 400 con detalle. Un test de conexion HTTP 200 no demuestra que una generacion tenga cuota o parametros correctos. Si falla una prueba, primero leer el mensaje especifico antes de cambiar modelos o API keys.

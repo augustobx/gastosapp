@@ -1,5 +1,5 @@
-import {waitTask} from './ai-tasks.js?v=11';
-import {providerFor,saveProvider,voiceFor,saveVoice} from './providers.js?v=11';
+import {waitTask,describeAiError} from './ai-tasks.js?v=12';
+import {providerFor,saveProvider,voiceFor,saveVoice} from './providers.js?v=12';
 // Diagnóstico visible por modelo: nunca pedir ni mostrar la clave API.
 export function setupAIDiagnostics(){
  const $=id=>document.getElementById(id);
@@ -107,7 +107,7 @@ export function setupAIDiagnostics(){
  async function testOne(service){
   if(busy)return false;
   busy=true;const suffix=label[service],btn=$('aiTest'+suffix);
-  btn.disabled=true;setState(service,'testing','Enviando petición real a OpenAI...');
+  btn.disabled=true;setState(service,'testing','Enviando petición real a '+providerLabel(providerFor(service))+'...');
   try{
    const provider=providerFor(service);
    const initial=await call('/api/ai/diagnostics/'+service,{provider,voice:$('aiVoiceSelect').value});
@@ -115,10 +115,7 @@ export function setupAIDiagnostics(){
    setState(service,'ok',providerLabel(providerFor(service))+' HTTP '+result.httpStatus+' · '+result.detail+' Modelo: '+result.model+' · '+result.latencyMs+' ms');
    return true;
   }catch(error){
-   const upstream=error.upstreamStatus?((error.provider==='gemini'?'Gemini HTTP ':'OpenAI HTTP ')+error.upstreamStatus):('GastosApp HTTP '+(error.httpStatus||'sin respuesta'));
-   const detail=upstream+' · '+(error.code||'error_desconocido')+' · '+(error.error||'Error sin detalle')+
-     (error.hint?' · SOLUCIÓN: '+error.hint:'')+
-     (error.requestId?' · Proveedor request ID: '+error.requestId:'');
+   const detail=describeAiError(error,providerFor(service));
    setState(service,'fail',detail);
    note('Falló '+names[service]+' ('+providerLabel(providerFor(service))+'). '+detail,'error');
    return false;
@@ -144,9 +141,7 @@ export function setupAIDiagnostics(){
    label.textContent='HTTP '+result.httpStatus+' · '+result.detail+' Tiempo: '+result.latencyMs+' ms.';
   }catch(error){
    label.dataset.kind='error';
-   label.textContent=(error.upstreamStatus?(error.provider==='gemini'?'Gemini HTTP ':'OpenAI HTTP ')+error.upstreamStatus:'GastosApp HTTP '+(error.httpStatus||'?'))+
-    ' · '+(error.code||'error')+': '+(error.error||'Sin detalle')+
-    (error.hint?' · SOLUCIÓN: '+error.hint:'');
+   label.textContent=describeAiError(error,$('aiNetworkProvider').value);
   }finally{btn.disabled=false;}
  }
  $('aiTestNetwork').addEventListener('click',()=>void testNetwork());
