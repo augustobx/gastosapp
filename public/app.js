@@ -1,9 +1,10 @@
-import {setupInstallments} from './installments.js?v=17';
-import {setupExpress} from './express.js?v=17';
-import {setupAIUsage} from './ai-usage.js?v=17';
-import {providerFor,saveProvider} from './providers.js?v=17';
-import { setupChat } from './chat.js?v=17';
-import { setupAIDiagnostics } from './diagnostics.js?v=17';
+import {setupLoanEditor,previousMonthsCount} from './loan-edit.js?v=18';
+import {setupInstallments} from './installments.js?v=18';
+import {setupExpress} from './express.js?v=18';
+import {setupAIUsage} from './ai-usage.js?v=18';
+import {providerFor,saveProvider} from './providers.js?v=18';
+import { setupChat } from './chat.js?v=18';
+import { setupAIDiagnostics } from './diagnostics.js?v=18';
 const $ = id => document.getElementById(id);
 const $$ = selector => [...document.querySelectorAll(selector)];
 const fmt = n => new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS',maximumFractionDigits:2}).format(Number(n||0));
@@ -13,7 +14,7 @@ const dateLabel = s => s ? s.slice(8,10)+'/'+s.slice(5,7)+'/'+s.slice(0,4) : '';
 const iconFor = c => ({Comida:'◈',Servicios:'⌁',Hogar:'⌂',Transporte:'➤',Salud:'✚',Educación:'▤','Deudas y préstamos':'▧',Tecnología:'▣',Entretenimiento:'✦',Indumentaria:'✧',Extra:'↗',Sueldo:'↗',Ventas:'↗'})[c]||'◉';
 const types = {dashboard:['Resumen','Tu dinero, más claro.','Una mirada simple a tus finanzas.'],movements:['Movimientos','Cada peso cuenta.','Buscá, controlá y administrá tus movimientos.'],cards:['Cuentas y tarjetas','Todos tus medios de pago.','Compras, tarjetas y vencimientos.'],reports:['Estadísticas','Conocé tus números.','Así se distribuye tu dinero.'],settings:['Configuración','A tu manera.','Ajustá la experiencia a tus necesidades.']};
 const categories = ['Comida','Servicios','Hogar','Transporte','Salud','Educación','Tecnología','Entretenimiento','Indumentaria','Deudas y préstamos','Tarjetas','Otros','Extra','Sueldo','Ventas'];
-let aiDiagnostics=null,aiUsagePanel=null,expressPanel=null,installmentsPanel=null;
+let aiDiagnostics=null,aiUsagePanel=null,expressPanel=null,installmentsPanel=null,loanEditPanel=null;
 const state = {month:localDay().slice(0,7),data:null,auth:false,aiEnabled:false,view:'dashboard',draft:null,editId:null,accountEditId:null,recognizer:null,recorder:null,audioStream:null,audioChunks:[],deferredInstall:null};
 function toast(message){const t=$('toast');t.textContent=message;t.classList.add('visible');clearTimeout(toast.timer);toast.timer=setTimeout(()=>t.classList.remove('visible'),4200);}
 async function request(url, method='GET',body) {
@@ -78,7 +79,12 @@ function render(){
       'Tarjeta / '+escape(account(p.accountId)?.name||'Sin medio'))+
     ' · '+p.paidCount+'/'+p.count+' cuotas pagadas'+
     (p.financingType==='loan'?' · '+fmt(p.installmentAmount)+' por cuota':'')+
-    ' · Restan '+fmt(p.unpaidTotal)+'</small></div><strong>'+fmt(p.amount)+'</strong>'+
+    ' · Restan '+fmt(p.unpaidTotal)+
+    (p.financingType==='loan'&&p.overdueCount>0?' · '+p.overdueCount+
+      ' cuota(s) anterior(es) sin pago confirmado ('+fmt(p.overdueTotal)+')':'')+
+    '</small></div><strong>'+fmt(p.amount)+'</strong>'+
+    (p.financingType==='loan'?'<button type="button" class="btn btn-muted" data-loan-edit="'+
+     escape(p.id)+'">Editar préstamo</button>':'')+
     '<button type="button" class="btn btn-primary" data-installment-plan="'+escape(p.id)+'">Ver cuotas y programar</button>'+
     '<button type="button" class="btn btn-muted" data-delete="'+escape(p.id)+'">Eliminar</button></div>'
   ).join(''):'<div class="empty">No hay préstamos ni compras financiadas registrados.</div>';
@@ -98,12 +104,15 @@ function rowsMarkup(rows,full){
     const subtitle=(t.isInstallment?(t.plannedDate?'Programada '+dateLabel(t.plannedDate)+' · ':'')+
       'Vto. original '+dateLabel(t.originalDueDate||t.dueDate)+' · ':t.dueDate?'Vence '+dateLabel(t.dueDate)+' · ':'')+dateLabel(t.date)+' · '+escape(t.category)+' · '+escape(account(t.accountId)?.name||'Sin medio')+tag+(t.isRecurring?' · Fijo mensual':'');
     const status=income?'Ingreso':t.isPaid?'Pagado':'Pendiente';
-    return '<div class="tx-row"><span class="tx-icon '+(income?'income':'')+'">'+iconFor(t.category)+'</span><div class="tx-info"><strong>'+escape(t.title)+'</strong><small>'+subtitle+'</small></div><div class="tx-amount"><strong class="'+(income?'incoming':'')+'">'+(income?'+':'−')+fmt(t.amount)+'</strong><small>'+status+'</small></div>'+(full?'<div class="tx-ops">'+(!income?'<button class="action-mini" data-paid="'+escape(id)+'" data-next-paid="'+(!t.isPaid)+'" title="'+(t.isPaid?'Marcar pendiente':'Marcar pagado')+'">'+(t.isPaid?'↶':'✓')+'</button>':'')+(!t.isInstallment&&!t.isRecurring?'<button class="action-mini" data-edit="'+escape(t.id)+'" title="Editar">✎</button>':'')+'<button class="action-mini" data-delete="'+escape(t.isInstallment?t.purchaseId:t.isRecurring?t.recurrenceId:t.id)+'" title="'+(t.isInstallment?'Eliminar compra completa':'Eliminar')+'">✕</button></div>':'')+'</div>';
+    return '<div class="tx-row"><span class="tx-icon '+(income?'income':'')+'">'+iconFor(t.category)+'</span><div class="tx-info"><strong>'+escape(t.title)+'</strong><small>'+subtitle+'</small></div><div class="tx-amount"><strong class="'+(income?'incoming':'')+'">'+(income?'+':'−')+fmt(t.amount)+'</strong><small>'+status+'</small></div>'+(full?'<div class="tx-ops">'+(!income?'<button class="action-mini" data-paid="'+escape(id)+'" data-next-paid="'+(!t.isPaid)+'" title="'+(t.isPaid?'Marcar pendiente':'Marcar pagado')+'">'+(t.isPaid?'↶':'✓')+'</button>':'')+(t.isInstallment&&t.financingType==='loan'?
+'<button class="action-mini" data-loan-edit="'+escape(t.purchaseId)+'" title="Editar préstamo">✎</button>':
+!t.isInstallment&&!t.isRecurring?'<button class="action-mini" data-edit="'+escape(t.id)+'" title="Editar">✎</button>':'')+'<button class="action-mini" data-delete="'+escape(t.isInstallment?t.purchaseId:t.isRecurring?t.recurrenceId:t.id)+'" title="'+(t.isInstallment?'Eliminar compra completa':'Eliminar')+'">✕</button></div>':'')+'</div>';
   }).join('');
 }
 function upcomingMarkup(rows) {
   if(!rows.length)return '<div class="empty">¡Todo al día! No tenés pagos pendientes en este mes.</div>';
-  return rows.map(t=>'<div class="due-item"><div class="due-date"><strong>'+escape((t.dueDate||t.date).slice(8,10))+'</strong><small>'+escape((t.dueDate||t.date).slice(5,7))+'</small></div><div class="due-details"><strong>'+escape(t.title)+'</strong><small>'+escape(account(t.accountId)?.name||t.category)+(t.isInstallment?' · Cuota '+t.number+'/'+t.total:'')+'</small></div><span class="due-price">'+fmt(t.amount)+'</span></div>').join('');
+  return rows.map(t=>'<div class="due-item"><div class="due-date"><strong>'+escape((t.paymentDate||t.plannedDate||t.dueDate||t.date).slice(8,10))+'</strong><small>'+escape((t.paymentDate||t.plannedDate||t.dueDate||t.date).slice(5,7))+'</small></div><div class="due-details"><strong>'+escape(t.title)+'</strong><small>'+escape(account(t.accountId)?.name||t.category)+(t.isInstallment?' · Cuota '+t.number+'/'+t.total+
+ (t.plannedDate?' · Venc. original '+dateLabel(t.originalDueDate||t.dueDate):''):'')+'</small></div><span class="due-price">'+fmt(t.amount)+'</span></div>').join('');
 }
 function categoryMarkup(cats) {
   if(!cats.length)return '<div class="empty">Todavía no hay gastos para analizar.</div>';
@@ -116,6 +125,19 @@ async function refresh() {
 }
 function showDialog(id){const dlg=$(id);if(!dlg.open)dlg.showModal();}
 function closeDialogs(){$$('dialog[open]').forEach(x=>x.close());}
+function refreshNewLoanOverdue(){
+ const loan=$('movementForm').elements.movementType.value==='expense'&&
+    Number($('txInstallments').value)>1&&$('txFinancingType').value==='loan';
+ const count=loan?previousMonthsCount($('txFirstDueDate').value,Number($('txInstallments').value),localDay()):0;
+ $('txOverdueBox').classList.toggle('hidden',count===0);
+ $('txOverdueChoice').required=count>0;
+ if(count===0)$('txOverdueChoice').value='';
+ $('txOverduePreview').textContent=count?
+   'Detecté '+count+' cuota'+(count===1?'':'s')+' de meses anteriores, por '+
+   fmt(count*Number($('txAmount').value||0))+
+   '. Si todavía las debés y elegís incluirlas, se sumarán al pago previsto de este mes.':
+   '';
+}
 function setTransactionMode(){
   const type=$('movementForm').elements.movementType.value, isIncome=type==='income';
   const a=account($('txAccount').value),count=Number($('txInstallments').value);
@@ -129,6 +151,7 @@ function setTransactionMode(){
   $('txFinanceFields').classList.toggle('hidden',!many);
   $('txFirstDueField').classList.toggle('hidden',!loan);
   $('txFirstDueDate').required=loan&&!state.editId;
+  refreshNewLoanOverdue();
   $('dueDateField').classList.toggle('hidden',isIncome||many||card||$('txRecurring').checked);
   $('txPaidLabel').textContent=isIncome?'Ya recibido':'Ya pagado';
   $('installmentHint').classList.toggle('hidden',isIncome);
@@ -159,6 +182,7 @@ function openMovement(item){
   $('txInstallments').value='1';
   $('txFinancingType').value='loan';
   $('txFirstDueDate').value='';
+  $('txOverdueChoice').value='';
   $('txRecurring').checked=false;
   $('txPaid').checked=item?item.isPaid:false;
   $('txNotes').value=item?.notes||'';
@@ -174,6 +198,7 @@ async function saveMovement(e){
     accountId:$('txAccount').value||null,installmentCount:Number($('txInstallments').value),
     financingType:Number($('txInstallments').value)>1?$('txFinancingType').value:null,
     firstDueDate:$('txFirstDueDate').value||null,
+    overdueChoice:$('txOverdueChoice').required?$('txOverdueChoice').value:'review',
     isRecurring:$('txRecurring').checked,
     isPaid:$('txPaid').checked,notes:$('txNotes').value};
   try {
@@ -300,6 +325,10 @@ function events(){
   installmentsPanel=setupInstallments({
     request,refresh,getPlans:()=>state.data?.purchases||[],fmt,dateLabel,today:localDay
   });
+  loanEditPanel=setupLoanEditor({
+    request,refresh,getPlans:()=>state.data?.purchases||[],getAccounts:()=>state.data?.accounts||[],
+    categories,fmt,today:localDay,onSaved:toast
+  });
   aiDiagnostics=setupAIDiagnostics();
   aiUsagePanel=setupAIUsage({request});
   expressPanel=setupExpress({
@@ -335,6 +364,8 @@ function events(){
       $('txFinancingType').value=account($('txAccount').value)?.kind==='credit'?'card':'loan';
     setTransactionMode();
   });
+  $('txFirstDueDate').addEventListener('change',refreshNewLoanOverdue);
+  $('txFirstDueDate').addEventListener('input',refreshNewLoanOverdue);
   $('txInstallments').addEventListener('change',()=>{
     $('txFinancingType').value=account($('txAccount').value)?.kind==='credit'?'card':'loan';
     setTransactionMode();
@@ -357,9 +388,11 @@ function events(){
   $('themeToggle').addEventListener('click',()=>{const t=document.documentElement.dataset.theme==='light'?'dark':'light';document.documentElement.dataset.theme=t;localStorage.setItem('gastos-theme',t);$('themeToggle').textContent=t==='light'?'☀':'☾';});
   document.addEventListener('click',async e=>{
     const pay=e.target.closest('[data-paid]'),del=e.target.closest('[data-delete]'),edit=e.target.closest('[data-edit]'),acc=e.target.closest('[data-edit-account]'),
-      installments=e.target.closest('[data-installment-plan]');
+      installments=e.target.closest('[data-installment-plan]'),
+      loanEdit=e.target.closest('[data-loan-edit]');
     try{
-      if(installments){installmentsPanel.open(installments.dataset.installmentPlan);}
+      if(loanEdit){loanEditPanel.open(loanEdit.dataset.loanEdit);}
+      else if(installments){installmentsPanel.open(installments.dataset.installmentPlan);}
       else if(pay){
         const row=state.data?.rows.find(r=>(r.isInstallment?r.installmentId:r.id)===pay.dataset.paid);
         if(row?.isInstallment){

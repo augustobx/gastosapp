@@ -1,5 +1,5 @@
-import {voiceFailure} from './voice-errors.js?v=17';
-import {taskError,describeAiError} from './ai-tasks.js?v=17';
+import {voiceFailure} from './voice-errors.js?v=18';
+import {taskError,describeAiError} from './ai-tasks.js?v=18';
 const delay=(ms,signal)=>new Promise((resolve,reject)=>{
  if(signal?.aborted)return reject(Object.assign(new Error('Cancelado'),{name:'AbortError'}));
  const timer=setTimeout(()=>{signal?.removeEventListener('abort',cancel);resolve();},ms);

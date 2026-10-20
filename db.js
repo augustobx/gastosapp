@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { uid, isoDay, money, monthOf, schedule, loanSchedule, project } from './lib/engine.js';
+import {monthArgentina,overdueInstallments,planOverdueToMonth,validateOverdueChoice} from './lib/loan-overdue.js';
 
 const dataDir = process.env.DATA_DIR || path.join(process.cwd(), 'data');
 const dataFile = path.join(dataDir, 'gastosapp-v2.json');
@@ -93,6 +94,8 @@ function insertTransaction(s,data) {
         const firstDueDate=dateField(data.firstDueDate||data.dueDate||'');
         if(!data.firstDueDate&&!data.dueDate)throw new Error('Indicá la fecha de vencimiento de la primera cuota del préstamo');
         const installments=loanSchedule({installmentAmount:amount,count,firstDueDate});
+        const overdueChoice=validateOverdueChoice(data.overdueChoice);
+        if(overdueChoice==='include')planOverdueToMonth(installments);
         const total=money(amount*count);
         if(!Number.isSafeInteger(Math.round(total*100)))throw new Error('El total financiado es demasiado grande');
         const plan={id:uid(),financingType:'loan',title,amount:total,installmentAmount:amount,
@@ -117,9 +120,12 @@ export const store = {
     if (!/^\d{4}-\d{2}$/.test(month)) throw new Error('Mes inválido');
     return {version:s.version, settings:s.settings, accounts:s.accounts, ...project(s,month),
       purchases:s.purchases.map(p=>({id:p.id,title:p.title,amount:p.amount,date:p.date,
-        count:p.installments.length,accountId:p.accountId,category:p.category,
+        count:p.installments.length,accountId:p.accountId,category:p.category,notes:p.notes||'',
         financingType:p.financingType||'card',installmentAmount:p.installmentAmount||
           (p.installments.length?p.installments[0].amount:0),
+        firstDueDate:p.firstDueDate||p.installments[0]?.dueDate||null,
+        overdueCount:overdueInstallments(p.installments).length,
+        overdueTotal:money(overdueInstallments(p.installments).reduce((n,i)=>n+i.amount,0)),
         paidCount:p.installments.filter(i=>i.isPaid).length,
         unpaidTotal:money(p.installments.filter(i=>!i.isPaid).reduce((t,i)=>t+i.amount,0)),
         installments:p.installments.map(i=>({id:i.id,number:i.number,total:i.total,amount:i.amount,
@@ -225,6 +231,49 @@ export const store = {
     }
     if(data.isPaid!==undefined) {t.isPaid=Boolean(data.isPaid);t.paidAt=t.isPaid?new Date().toISOString():null;}
     persist();return t;
+  },
+  // Editar un préstamo existente conservando el ID del plan y de cada cuota.
+  // Ningún cambio histórico destructivo de un pago confirmado se permite.
+  updateLoan(id,input){
+    const previous=get(),working=structuredClone(previous);
+    const loan=working.purchases.find(p=>p.id===id);
+    if(!loan)throw new Error('Préstamo no encontrado');
+    if(loan.financingType!=='loan')throw new Error('Este plan es una compra con tarjeta, no un préstamo');
+    const title=input?.title!==undefined?titleField(input.title):loan.title;
+    const count=input?.count!==undefined?Number(input.count):loan.installments.length;
+    if(!Number.isInteger(count)||count<2||count>60)throw new Error('Cantidad de cuotas inválida (2 a 60)');
+    const amount=input?.installmentAmount!==undefined?finiteAmount(input.installmentAmount):
+      finiteAmount(loan.installmentAmount||loan.installments[0]?.amount);
+    if(input?.firstDueDate!==undefined&&!input.firstDueDate)
+      throw new Error('Indicá el primer vencimiento del préstamo.');
+    const firstDueDate=input?.firstDueDate!==undefined?dateField(input.firstDueDate):
+      dateField(loan.firstDueDate||loan.installments[0].dueDate);
+    const accountId=input?.accountId!==undefined?validateAccount(working,input.accountId):
+      loan.accountId;
+    const category=input?.category!==undefined?categoryField(input.category):loan.category;
+    const notes=input?.notes!==undefined?clampText(input.notes):loan.notes;
+    const scheduleChanged=count!==loan.installments.length||
+      amount!==loan.installments[0].amount||
+      firstDueDate!==loan.installments[0].dueDate;
+    if(scheduleChanged&&loan.installments.some(i=>i.isPaid))
+      throw new Error('Hay cuotas pagadas. Podés editar concepto, medio y categoría, pero no cambiar importes, cantidad o primer vencimiento de pagos ya realizados.');
+    if(count<loan.installments.length&&loan.installments.slice(count).some(i=>i.isPaid||i.plannedDate))
+      throw new Error('No se pueden eliminar cuotas pagadas o que ya tienen fecha programada.');
+    const future=loanSchedule({installmentAmount:amount,count,firstDueDate});
+    loan.installments=future.map((item,i)=>{
+      const prior=loan.installments[i];if(!prior)return item;
+      return {...item,id:prior.id,isPaid:Boolean(prior.isPaid),paidAt:prior.paidAt||null,
+        paidDate:prior.paidDate||null,plannedDate:prior.plannedDate||null};
+    });
+    loan.title=title;loan.installmentAmount=amount;loan.amount=money(amount*count);
+    if(!Number.isSafeInteger(Math.round(loan.amount*100)))
+      throw new Error('El total financiado es demasiado grande');
+    loan.firstDueDate=firstDueDate;loan.accountId=accountId;loan.category=category;loan.notes=notes;
+    const overdueChoice=validateOverdueChoice(input?.overdueChoice);
+    const overdueResult=overdueChoice==='include'?planOverdueToMonth(loan.installments):null;
+    state=working;try{persist();}catch(error){state=previous;throw error;}
+    return {id:loan.id,title:loan.title,amount:loan.amount,installmentAmount:amount,count,
+      overdueMoved:overdueResult?.moved||0,overdueMovedTotal:overdueResult?.total||0};
   },
   // Programar o liquidar varias cuotas atómicamente, sin crear gastos extra.
   updateInstallments({ids,action,date}){

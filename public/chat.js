@@ -1,7 +1,7 @@
-import {getNaturalVoice} from './speech-request.js?v=17';
-import {voiceFailure,spokenExcerpt} from './voice-errors.js?v=17';
-import {waitTask} from './ai-tasks.js?v=17';
-import {providerFor,voiceFor} from './providers.js?v=17';
+import {getNaturalVoice} from './speech-request.js?v=18';
+import {voiceFailure,spokenExcerpt} from './voice-errors.js?v=18';
+import {waitTask} from './ai-tasks.js?v=18';
+import {providerFor,voiceFor} from './providers.js?v=18';
 // Asistente conversacional: IA optativa para comprensión, voz y transcripción.
 // Ningún movimiento se guarda hasta confirmar toda la tanda.
 export function setupChat({request,refresh,getAccounts,fmt,dateLabel,hasAI,openQuick,openDiagnostics}){
