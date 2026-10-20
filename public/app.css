@@ -86,3 +86,9 @@
  .ai-service .btn{grid-column:2}
  .ai-voice-config label{max-width:none}
 }
+
+.ai-microphone-test{padding:15px;border:1px solid var(--border);border-radius:13px;background:var(--surface2);display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.ai-microphone-test>div:first-child{flex:1;min-width:160px}
+.ai-microphone-test strong{font-size:13px}
+.ai-microphone-test p{margin:6px 0 0;font-size:11px;line-height:1.55;color:var(--sub)}
+.ai-microphone-test .ai-notice{width:100%;min-width:0}

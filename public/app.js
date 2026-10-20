@@ -270,7 +270,8 @@ function events(){
   aiDiagnostics=setupAIDiagnostics();
   setupChat({
     request,refresh,getAccounts:()=>state.data?.accounts||[],fmt,dateLabel,hasAI:()=>state.aiEnabled,
-    openQuick:()=>{$('assistantPreview').classList.add('hidden');state.draft=null;showDialog('assistantDialog');}
+    openQuick:()=>{$('assistantPreview').classList.add('hidden');state.draft=null;showDialog('assistantDialog');},
+    openDiagnostics:()=>go('settings')
   });
   $$('[data-view]').forEach(b=>b.addEventListener('click',()=>go(b.dataset.view)));
   $$('[data-go]').forEach(b=>b.addEventListener('click',()=>go(b.dataset.go)));

@@ -1,6 +1,6 @@
 // Asistente conversacional: IA optativa para comprensión, voz y transcripción.
 // Ningún movimiento se guarda hasta confirmar toda la tanda.
-export function setupChat({request,refresh,getAccounts,fmt,dateLabel,hasAI,openQuick}){
+export function setupChat({request,refresh,getAccounts,fmt,dateLabel,hasAI,openQuick,openDiagnostics}){
  const $=id=>document.getElementById(id);
  const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  const norm=x=>String(x||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[!?.,;:]+/g,' ').trim().replace(/\s+/g,' ');
@@ -16,9 +16,9 @@ export function setupChat({request,refresh,getAccounts,fmt,dateLabel,hasAI,openQ
    messages.append(el);messages.scrollTop=messages.scrollHeight;
  }
  function status(value){$('chatStatus').textContent=value;}
- function clearAlert(){$('chatAlert').textContent='';$('chatAlert').classList.add('hidden');}
+ function clearAlert(){$('chatAlert').textContent='';$('chatAlert').classList.add('hidden');$('chatOpenDiagnostics').classList.add('hidden');}
  function alertIssue(message){
-   $('chatAlert').textContent=message;$('chatAlert').classList.remove('hidden');status('Hay un problema con el audio. Revisá el aviso.');
+   $('chatAlert').textContent=message;$('chatAlert').classList.remove('hidden');$('chatOpenDiagnostics').classList.remove('hidden');status('Hay un problema con el audio. Revisá el aviso.');
  }
  async function audioProblem(response,operation){
    let info={};try{info=await response.json();}catch{}
@@ -377,6 +377,7 @@ export function setupChat({request,refresh,getAccounts,fmt,dateLabel,hasAI,openQ
    if(e.target.closest('#chatMore')){chat.phase='collect';say('Dale, decime el siguiente.');}
    if(e.target.closest('#chatSaveAll')){if(chat.phase==='confirm')void saveBatch();else summarize();}
  });
+ $('chatOpenDiagnostics').addEventListener('click',()=>{close();openDiagnostics();});
  $('chatReplayVoice').addEventListener('click',()=>{
    if(!chat.lastSpoken)return alertIssue('Todavía no hay ningún mensaje para reproducir.');
    if(chat.speaker instanceof HTMLAudioElement && chat.speaker.src){

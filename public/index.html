@@ -111,6 +111,11 @@
               <button id="aiTestAll" type="button" class="btn btn-primary">Diagnosticar los 3 modelos</button>
               <button id="aiRefreshSettings" type="button" class="btn btn-muted">Actualizar estado</button>
             </div>
+            <div class="ai-microphone-test">
+              <div><strong>Prueba de micrófono real</strong><p>Grabá 3–5 segundos diciendo «probando, uno, dos, tres». Verificamos permisos, formato del navegador y respuesta del modelo.</p></div>
+              <button id="aiTestMicrophone" type="button" class="btn btn-muted">🎙 Probar micrófono</button>
+              <div id="aiMicResult" role="status" class="ai-notice">Todavía no se probó el micrófono.</div>
+            </div>
             <div class="ai-voice-config">
               <label>Voz natural preferida
                 <select id="aiVoiceSelect">
@@ -189,6 +194,7 @@
         <label><input id="chatHandsFree" type="checkbox"> Manos libres (dictado del navegador)</label>
       </div>
       <div id="chatAlert" class="ai-chat-alert hidden" role="alert"></div>
+      <button id="chatOpenDiagnostics" type="button" class="btn btn-muted hidden">Abrir pruebas de IA en Configuración →</button>
       <div class="chat-replay-line"><button type="button" id="chatReplayVoice" class="btn btn-muted">▶ Volver a escuchar la última respuesta</button><small>Voz generada por IA · la app avisa si falla, no cambia de voz sin consultarte.</small></div>
       <div class="chat-input-row">
         <input id="chatInput" type="text" maxlength="850" autocomplete="off" placeholder="Contame varios gastos juntos,, «nada más» o «sí, guardar»" aria-label="Tu mensaje">
