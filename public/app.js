@@ -1,6 +1,6 @@
-import {providerFor,saveProvider} from './providers.js?v=10';
-import { setupChat } from './chat.js?v=10';
-import { setupAIDiagnostics } from './diagnostics.js?v=10';
+import {providerFor,saveProvider} from './providers.js?v=11';
+import { setupChat } from './chat.js?v=11';
+import { setupAIDiagnostics } from './diagnostics.js?v=11';
 const $ = id => document.getElementById(id);
 const $$ = selector => [...document.querySelectorAll(selector)];
 const fmt = n => new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS',maximumFractionDigits:2}).format(Number(n||0));

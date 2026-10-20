@@ -1,4 +1,5 @@
-import {providerFor,saveProvider,voiceFor,saveVoice} from './providers.js?v=10';
+import {waitTask} from './ai-tasks.js?v=11';
+import {providerFor,saveProvider,voiceFor,saveVoice} from './providers.js?v=11';
 // Diagnóstico visible por modelo: nunca pedir ni mostrar la clave API.
 export function setupAIDiagnostics(){
  const $=id=>document.getElementById(id);
@@ -109,7 +110,8 @@ export function setupAIDiagnostics(){
   btn.disabled=true;setState(service,'testing','Enviando petición real a OpenAI...');
   try{
    const provider=providerFor(service);
-   const result=await call('/api/ai/diagnostics/'+service,{provider,voice:$('aiVoiceSelect').value});
+   const initial=await call('/api/ai/diagnostics/'+service,{provider,voice:$('aiVoiceSelect').value});
+   const result=await waitTask(initial,call,message=>setState(service,'testing',message));
    setState(service,'ok',providerLabel(providerFor(service))+' HTTP '+result.httpStatus+' · '+result.detail+' Modelo: '+result.model+' · '+result.latencyMs+' ms');
    return true;
   }catch(error){
@@ -217,8 +219,9 @@ export function setupAIDiagnostics(){
        (result.hint?' · SOLUCIÓN: '+result.hint:''),'error');
       return;
      }
-     micMessage('Transcripción exitosa · HTTP '+response.status+' · '+result.data.model+
-      ' · TEXTO: «'+result.data.text+'». Si el texto no coincide con tu dictado, el micrófono o el reconocimiento requieren ajustes.','ok');
+     const finished=await waitTask(result.data,call,message=>micMessage(message));
+     micMessage('Transcripción exitosa · HTTP '+(finished.httpStatus||response.status)+' · '+finished.model+
+      ' · TEXTO: «'+finished.text+'». Si el texto no coincide con tu dictado, el micrófono o el reconocimiento requieren ajustes.','ok');
     }catch(e){micMessage('No pude llegar al servidor desde este navegador: '+e.message+'. Revisá Internet, HTTPS y servidor.','error');}
    };
    rec.onerror=e=>micMessage('Error al grabar: '+(e.error?.message||'El micrófono dejó de responder.'),'error');
