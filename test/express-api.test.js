@@ -27,7 +27,7 @@ test('Express autoguardado opt-in, idempotente, validado en servidor y sin llama
  assert.equal(login.status,200);
  const cookie=login.headers.get('set-cookie')?.split(';')[0];
  const request=async (url,body,cookieHeader=cookie)=>{
-  const r=await fetch(base+url,{method:'POST',headers:{
+  const r=await fetch(base+url,{method:url==='/api/settings'?'PATCH':'POST',headers:{
    'Content-Type':'application/json',...(cookieHeader?{Cookie:cookieHeader}:{})
   },body:JSON.stringify(body)});
   return {status:r.status,data:await r.json()};
