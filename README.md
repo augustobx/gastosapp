@@ -167,3 +167,15 @@ Seguridad y despliegue: `git pull --ff-only origin main` y `docker compose up -d
 ## Errores reales de tareas Gemini en el panel (v12)
 
 Cuando una tarea Gemini fallaba, el cliente descartaba los campos de error al convertir la respuesta en un objeto Error. La PWA v12 ahora conserva proveedor, HTTP de Google, codigo, mensaje y recomendacion. Hay tests que simulan errores HTTP 400 con detalle. Un test de conexion HTTP 200 no demuestra que una generacion tenga cuota o parametros correctos. Si falla una prueba, primero leer el mensaje especifico antes de cambiar modelos o API keys.
+
+## Reintentos y selección de modelo según documentación Gemini (octubre de 2026)
+
+El cliente REST de GastosApp reintenta errores temporales HTTP 503/500/502/504/408 con pausas progresivas y jitter; 429 solo si el error señala un rate limit temporal, no una cuota agotada. No reintenta 400/401/403/404. Al terminar los reintentos sin éxito, mantiene el HTTP de Google y la cantidad de intentos en el diagnóstico.
+
+Documentación oficial: https://ai.google.dev/gemini-api/docs/troubleshooting y https://ai.google.dev/gemini-api/docs/api-errors
+
+Los modelos estables alternativos documentados son gemini-3.6-flash y gemini-3.5-flash-lite (ambos admiten audio de entrada y JSON estructurado). Se pueden probar indicando GEMINI_NLU_MODEL y GEMINI_STT_MODEL en .env, sin cambiar ni reiniciar la voz Gemini TTS. Gemini 3.8 Flash usa thinkingLevel low. En Gemini 3.6 Flash el cliente omite esa configuración, y Gemini 3.5 Flash-Lite usa su nivel minimal por defecto. Se usa responseFormat.text.mimeType application/json.
+
+Esas alternativas NO se activan automáticamente, para no generar consumos inesperados. Los tests simulan errores de Google sin usar la clave real ni gastar crédito. Las pruebas reales se hacen desde el servidor del usuario.
+
+Documentación de modelos: https://ai.google.dev/gemini-api/docs/generate-content/whats-new-gemini-3.6 , https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash , https://ai.google.dev/gemini-api/docs/generate-content/structured-output , https://ai.google.dev/gemini-api/docs/generate-content/audio .
