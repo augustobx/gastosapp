@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { providerFailure,publicError,VOICES,makeSpeechBody,silentWav,diagnostics } from '../lib/openai-health.js';
+import { providerFailure,publicError,VOICES,makeSpeechBody,silentWav,diagnostics,networkDiagnostics } from '../lib/openai-health.js';
 
 const mockResponse=(body,{status=200,contentType='application/json'}={})=>({
  status,ok:status>=200&&status<300,
@@ -71,4 +71,22 @@ test('diagnóstico informa al usuario código HTTP proveedor, no error genérico
  const f=async()=>mockResponse({error:{code:'insufficient_quota',message:'Billing hard limit reached'}},{status:429});
  await assert.rejects(()=>diagnostics('stt',{key:'test',model:'gpt-4o-mini-transcribe',fetcher:f}),
   e=>{assert.equal(e.upstreamStatus,429);assert.match(e.hint,/facturación|crédito/);return true;});
+});
+
+test('prueba de red usa GET /v1/models y acepta 200 sin generar audio',async()=>{
+ const r=await networkDiagnostics({key:'dummy',fetcher:async(url,opts)=>{
+  assert.equal(url,'https://api.openai.com/v1/models');
+  assert.equal(opts.method,'GET');
+  assert.equal(opts.headers.Authorization,'Bearer dummy');
+  return mockResponse({data:[]});
+ }});
+ assert.equal(r.httpStatus,200);
+ assert.match(r.detail,/API Key/);
+});
+test('diagnóstico de red diferencia 401 proveedor y caída de DNS',async()=>{
+ await assert.rejects(()=>networkDiagnostics({key:'dummy',fetcher:async()=>mockResponse({
+   error:{code:'invalid_api_key',message:'Incorrect API key'}
+ },{status:401})}),e=>{assert.equal(e.upstreamStatus,401);assert.match(e.hint,/clave/);return true;});
+ await assert.rejects(()=>networkDiagnostics({key:'dummy',fetcher:async()=>{const e=new TypeError('fetch failed');
+   e.cause={code:'ENOTFOUND'};throw e;}}),e=>{assert.equal(e.code,'network_error');assert.match(e.message,/ENOTFOUND/);return true;});
 });

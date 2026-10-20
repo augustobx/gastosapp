@@ -17,7 +17,26 @@ export function setupAIDiagnostics(){
     headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined});}
   catch(e){throw {error:'Sin conexión con GastosApp: '+e.message,code:'network_error',
     hint:'Comprobá que GastosApp esté levantada, que el dominio tenga HTTPS y que el contenedor tenga salida a Internet.'};}
-  const data=await response.json().catch(()=>({error:'Respuesta no JSON de GastosApp.',code:'invalid_json'}));
+  const type=String(response.headers.get('content-type')||'desconocido');
+  const backend=response.headers.get('x-gastosapp-backend');
+  const raw=await response.text();
+  let data;
+  try{data=JSON.parse(raw);}catch{
+    const gateway=response.status===502||response.status===503||response.status===504;
+    const outside=!backend;
+    const cause=gateway&&outside?'gateway_non_json':'unexpected_non_json';
+    const rawText=raw.replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim().slice(0,150);
+    throw {
+      httpStatus:response.status,code:cause,
+      error:'HTTP '+response.status+' recibido en formato '+type+'. '+(gateway&&outside?
+       'El proxy o un intermediario respondió en lugar de la API Node de GastosApp.':
+       'La respuesta no cumple el contrato JSON de GastosApp.')+
+       (rawText?' Resumen: '+rawText:' Respuesta vacía.'),
+      hint:gateway&&outside?
+       'Revisá docker compose ps, los logs de gastosapp-web y los errores de Nginx Proxy Manager. Probá el mismo endpoint dentro del contenedor para localizar el salto que falla.':
+       'Verificá que el servidor tenga la versión actual, que /api llegue a Express y revisá los logs de aplicación.'
+    };
+  }
   if(!response.ok)throw {...data,httpStatus:response.status};
   return data.data;
  }
@@ -42,7 +61,7 @@ export function setupAIDiagnostics(){
      $('aiConnectionState').textContent='Sin API Key';
      note('La API Key no llegó al contenedor. Revisá OPENAI_API_KEY en /opt/apps/gastosapp/.env y recreá solo web. Nunca la pegues en el chat.','error');
    }
-   for(const id of ['aiTestNlu','aiTestStt','aiTestTts','aiTestAll','aiPreviewVoice','aiTestMicrophone'])$(id).disabled=!config.configured;
+   for(const id of ['aiTestNetwork','aiTestNlu','aiTestStt','aiTestTts','aiTestAll','aiPreviewVoice','aiTestMicrophone'])$(id).disabled=!config.configured;
   }catch(error){
    $('aiConnectionState').textContent='No se pudo consultar';
    note('No pudimos leer la configuración: '+(error.error||error.message||'Error inesperado')+
@@ -77,6 +96,21 @@ export function setupAIDiagnostics(){
     passed+' de 3 modelos respondieron HTTP 200. Revisá debajo el error específico de cada modelo.',passed===3?'ok':'error');
   $('aiTestAll').disabled=false;
  }
+ async function testNetwork(){
+  const btn=$('aiTestNetwork'),label=$('aiNetworkResult');
+  btn.disabled=true;label.dataset.kind='neutral';label.textContent='Consultando OpenAI desde el contenedor (GET /v1/models). No genera audio ni texto.';
+  try{
+   const result=await call('/api/ai/network');
+   label.dataset.kind='ok';
+   label.textContent='HTTP '+result.httpStatus+' · '+result.detail+' Tiempo: '+result.latencyMs+' ms.';
+  }catch(error){
+   label.dataset.kind='error';
+   label.textContent=(error.upstreamStatus?'OpenAI HTTP '+error.upstreamStatus:'GastosApp HTTP '+(error.httpStatus||'?'))+
+    ' · '+(error.code||'error')+': '+(error.error||'Sin detalle')+
+    (error.hint?' · SOLUCIÓN: '+error.hint:'');
+  }finally{btn.disabled=false;}
+ }
+ $('aiTestNetwork').addEventListener('click',()=>void testNetwork());
  function chooseVoice(){
   localStorage.setItem(voiceKey,$('aiVoiceSelect').value);
   voiceNote('Voz «'+$('aiVoiceSelect').value+'» elegida. Para comprobarla, tocá «Escuchar voz real». La selección también se usa en el chat.','ok');

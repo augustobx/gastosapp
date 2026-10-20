@@ -1,5 +1,5 @@
-import { setupChat } from './chat.js?v=8';
-import { setupAIDiagnostics } from './diagnostics.js?v=8';
+import { setupChat } from './chat.js?v=9';
+import { setupAIDiagnostics } from './diagnostics.js?v=9';
 const $ = id => document.getElementById(id);
 const $$ = selector => [...document.querySelectorAll(selector)];
 const fmt = n => new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS',maximumFractionDigits:2}).format(Number(n||0));
