@@ -59,5 +59,29 @@ test('Gemini HTTP: diagnósticos, chat y transcripción encolan con res válido 
  assert.equal(spoken.headers.get('content-type'),'audio/wav');
  assert.equal(spoken.headers.get('x-gastosapp-tts-provider'),'gemini');
  assert.equal(Buffer.from(await spoken.arrayBuffer()).toString('ascii',0,4),'RIFF');
+ const voicePayload={text:'Hola, ¿cómo andás?',provider:'gemini',voice:'Kore'};
+ const job=await req('/api/chat/speech/queue',{method:'POST',body:voicePayload});
+ assert.equal(job.status,202);
+ assert.ok(job.json.data.taskId);
+ const repeated=await req('/api/chat/speech/queue',{method:'POST',body:voicePayload});
+ assert.equal(repeated.status,202);
+ assert.equal(repeated.json.data.taskId,job.json.data.taskId);
+ assert.equal(repeated.json.data.reused,true);
+ let state;
+ for(let i=0;i<40;i++){
+  const next=await req('/api/chat/speech/task/'+job.json.data.taskId);
+  assert.equal(next.status,200);
+  state=next.json.data;
+  if(state.status!=='working')break;
+  await wait(25);
+ }
+ assert.equal(state.status,'done',JSON.stringify(state));
+ assert.equal(state.data.mime,'audio/wav');
+ const wav=await fetch(url+state.data.audioUrl,{headers:{Cookie:cookie}});
+ assert.equal(wav.status,200);
+ assert.equal(wav.headers.get('content-type'),'audio/wav');
+ assert.equal(Buffer.from(await wav.arrayBuffer()).toString('ascii',0,4),'RIFF');
+ const unauth=await fetch(url+state.data.audioUrl);
+ assert.equal(unauth.status,401);
  assert.doesNotMatch(stderr,/res is not defined/);
 });

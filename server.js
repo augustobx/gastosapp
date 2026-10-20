@@ -9,6 +9,7 @@ import { aiChatTurn } from './lib/ai-chat.js';
 import { VOICES,callOpenAI,makeSpeechBody,publicError,diagnostics,networkDiagnostics } from './lib/openai-health.js';
 import { GEMINI_MODELS,GEMINI_VOICES,geminiChatTurn,geminiTranscribe,geminiSpeech,geminiNetwork,geminiDiagnostic } from './lib/gemini.js';
 import {makeJobs} from './lib/ai-jobs.js';
+import {createSpeechJobs} from './lib/speech-jobs.js';
 
 const port=Number(process.env.PORT||3000);
 const password=process.env.APP_PASSWORD||'';
@@ -23,6 +24,7 @@ app.use(compression());
 app.use(express.json({limit:'128kb'}));
 const sessions=new Map();
 const aiJobs=makeJobs();
+const speechJobs=createSpeechJobs();
 const attempts=new Map();
 const highCostAttempts=new Map();
 function limited(maxPerMinute){return (req,res,next)=>{
@@ -239,6 +241,53 @@ app.post('/api/chat/turn',limited(20),wrap(async (req,res)=>{
       key:process.env.OPENAI_API_KEY,model:process.env.OPENAI_NLU_MODEL||'gpt-4o-mini'});
 
 }));
+// TTS asíncrona: Cloudflare/Nginx no deben mantener una solicitud abierta durante la síntesis.
+app.post('/api/chat/speech/queue',limited(12),wrap((req,res)=>{
+ const phrase=String(req.body?.text||'').trim();
+ if(!phrase||phrase.length>620)throw Object.assign(new Error('Texto de voz inválido (máximo 620 caracteres).'),{
+  status:400,code:'invalid_speech_text'
+ });
+ const provider=providerFrom(req.body?.provider);
+ const voice=provider==='gemini'?
+   (GEMINI_VOICES.includes(req.body?.voice)?req.body.voice:process.env.GEMINI_TTS_VOICE||'Kore'):
+   (VOICES.includes(req.body?.voice)?req.body.voice:process.env.OPENAI_TTS_VOICE||'marin');
+ const model=provider==='gemini'?(process.env.GEMINI_TTS_MODEL||GEMINI_MODELS.tts):
+   (process.env.OPENAI_TTS_MODEL||'gpt-4o-mini-tts');
+ const generate=async()=>{
+  try{
+   if(provider==='gemini')return await geminiSpeech({
+    text:phrase,voice,key:process.env.GEMINI_API_KEY,model
+   });
+   const response=await callOpenAI('https://api.openai.com/v1/audio/speech',{
+    key:process.env.OPENAI_API_KEY,
+    body:makeSpeechBody({text:phrase,voice,model}),
+    headers:{'Content-Type':'application/json'},timeoutMs:50000
+   });
+   return {bytes:Buffer.from(await response.arrayBuffer()),mime:'audio/mpeg'};
+  }catch(error){
+   const info=publicError(error);
+   console.error('TTS ASYNC',JSON.stringify({provider,model,status:error.upstreamStatus||error.status||502,
+    code:info.code,message:info.error,textLength:phrase.length}));
+   throw error;
+  }
+ };
+ const queued=speechJobs.start(jobOwner(req),{provider,model,voice,text:phrase},generate);
+ res.status(202);
+ return queued;
+}));
+app.get('/api/chat/speech/task/:id',wrap(req=>speechJobs.status(jobOwner(req),req.params.id)));
+app.get('/api/chat/speech/task/:id/audio',async(req,res)=>{
+ try{
+  const audio=speechJobs.audio(jobOwner(req),req.params.id);
+  res.setHeader('Content-Type',audio.mime);
+  res.setHeader('Cache-Control','private, no-store');
+  res.setHeader('Content-Length',String(audio.bytes.length));
+  res.send(audio.bytes);
+ }catch(error){
+  const details=publicError(error);
+  res.status(error.status||500).json(details);
+ }
+});
 app.post('/api/chat/speech',limited(16),async(req,res)=>{
   let activeProvider=null;
   const phrase=String(req.body?.text||'').trim();

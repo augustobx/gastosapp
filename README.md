@@ -189,3 +189,13 @@ Documentación de modelos: https://ai.google.dev/gemini-api/docs/generate-conten
 - Las pruebas cubren Cloudflare 502 HTML, 503 JSON de Google, texto corto y respuesta WAV del endpoint autenticado. CI ejecuta chequeo de sintaxis para los nuevos módulos.
 
 Si persiste el problema: ejecutar en Donweb `docker logs --tail 60 gastosapp-web` justo despues del error, sin compartir secretos; inspeccionar registros TTS y luego proxy si la respuesta es HTML.
+
+## Voz Gemini asíncrona y cuota gratuita (PWA v14)
+
+El 20/10/2026 se comprobó que la ruta interna de TTS respondió HTTP 200 con 198118 bytes WAV tras 20555 ms, sin reinicios/OOM. En otra solicitud Google registró `429 too_many_requests` con el límite de Free Tier reportado para esa clave de 10 solicitudes por día de `gemini-3.8-flash-tts` y plazo de espera de aproximadamente 16 horas. Ambos resultados son de intentos diferentes; el HTTP 502 HTML de Cloudflare no prueba por sí solo un 429.
+
+Para no mantener conexiones Cloudflare/Nginx abiertas mientras sintetiza, el chat y la previsualización utilizan POST /api/chat/speech/queue (HTTP 202) y consultan GET /api/chat/speech/task/:id hasta completarse. GET /api/chat/speech/task/:id/audio descarga el archivo WAV/MP3 bajo autenticación de la misma sesión. El estado nunca contiene bytes ni URL externa. Los trabajos y WAV se guardan temporalmente solo en RAM y vencen a los 4 minutos. Se reutilizan dentro de la misma sesión audios con texto/modelo/voz idénticos durante ese período, en vez de gastar otra solicitud. El saludo inicial del chat se muestra escrito sin generar audio; la voz de los demás mensajes sigue opcional.
+
+HTTP 429 con cuota diaria agotada no se reintenta automáticamente. La PWA muestra el mensaje real, suspende la reproducción automática hasta que el usuario elija reintentar y mantiene la conversación escrita operativa. Para tener voz disponible en uso cotidiano hay que esperar al reinicio de cuota o habilitar un nivel de facturación adecuado; el cambio de endpoint no aumenta la cuota gratuita. No se activan proveedores de pago silenciosamente.
+
+Pruebas unitarias y HTTP: cola, resultado pendiente/completado/fallido, aislamiento de sesión, ausencia de datos de audio en JSON, deduplicación de muestras, subida de WAV y 429 real sin consumir la clave del usuario. No modificar Nginx Proxy Manager ni el resto de contenedores.

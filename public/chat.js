@@ -1,6 +1,7 @@
-import {voiceFailure,spokenExcerpt} from './voice-errors.js?v=13';
-import {waitTask} from './ai-tasks.js?v=13';
-import {providerFor,voiceFor} from './providers.js?v=13';
+import {getNaturalVoice} from './speech-request.js?v=14';
+import {voiceFailure,spokenExcerpt} from './voice-errors.js?v=14';
+import {waitTask} from './ai-tasks.js?v=14';
+import {providerFor,voiceFor} from './providers.js?v=14';
 // Asistente conversacional: IA optativa para comprensión, voz y transcripción.
 // Ningún movimiento se guarda hasta confirmar toda la tanda.
 export function setupChat({request,refresh,getAccounts,fmt,dateLabel,hasAI,openQuick,openDiagnostics}){
@@ -48,11 +49,11 @@ export function setupChat({request,refresh,getAccounts,fmt,dateLabel,hasAI,openQ
  }
  function voiceText(message){return spokenExcerpt(message,200);}
  function preferredVoice(){return voiceFor(providerFor('tts'));}
- function say(message,{bubbleOnly=false}={}){
+ function say(message,{bubbleOnly=false,skipVoice=false}={}){
    if(!bubbleOnly)bubble('assistant',message);
    chat.lastSpoken=message;
    stopVoice();
-   if(!$('chatSpeak').checked)return;
+   if(skipVoice||!$('chatSpeak').checked)return;
    const seq=chat.voiceSeq;
    if(!hasAI()||!$('chatNaturalVoice').checked){
      browserVoice(message,seq);return;
@@ -62,14 +63,12 @@ export function setupChat({request,refresh,getAccounts,fmt,dateLabel,hasAI,openQ
    void(async()=>{
      try{
        status('Generando voz natural con '+providerFor('tts')+' ('+preferredVoice()+')...');
-       const response=await fetch('/api/chat/speech',{method:'POST',credentials:'same-origin',
-         headers:{'Content-Type':'application/json'},
-         body:JSON.stringify({text:voiceText(message),voice:preferredVoice(),provider:providerFor('tts')}),signal:abort.signal});
-       if(!response.ok)throw await voiceFailure(response,'Voz natural');
-       const type=String(response.headers.get('Content-Type')||'').toLowerCase();
-       if(!type.startsWith('audio/'))throw new Error('La API respondió HTTP 200 con '+(type||'sin Content-Type')+' en lugar de audio.');
-       const audioBlob=await response.blob();
-       if(audioBlob.size<100)throw new Error('La API devolvió HTTP 200 pero el audio está vacío.');
+       const generated=await getNaturalVoice({
+         text:voiceText(message),voice:preferredVoice(),provider:providerFor('tts'),
+         signal:abort.signal,onProgress:status
+       });
+       const audioBlob=generated.blob;
+       const type=generated.mime;
        if(abort.signal.aborted||seq!==chat.voiceSeq||chat.closed)return;
        const url=URL.createObjectURL(audioBlob);chat.voiceUrl=url;
        const audio=new Audio(url);chat.speaker=audio;
@@ -100,7 +99,7 @@ export function setupChat({request,refresh,getAccounts,fmt,dateLabel,hasAI,openQ
    stopMic();stopVoice();
    chat.items=[];chat.pending=null;chat.unresolved=null;chat.editIndex=null;chat.phase='collect';chat.busy=false;chat.key=key();
    messages.replaceChildren();review.classList.add('hidden');editor.classList.add('hidden');clearAlert();
-   $('chatInput').value='';status('Podés hablar o escribir.');say(welcome);
+   $('chatInput').value='';status('Podés hablar o escribir.');say(welcome,{skipVoice:true});
  }
  function close(){chat.closed=true;stopMic();stopVoice();if(dlg.open)dlg.close();}
  function open(){
