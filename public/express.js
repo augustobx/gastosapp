@@ -1,4 +1,4 @@
-import {parseExpress} from './express-parse.js?v=16';
+import {parseExpress} from './express-parse.js?v=17';
 
 export function setupExpress({request,refresh,getAccounts,fmt,onSettingsSaved,onSaved}){
  const $=id=>document.getElementById(id);

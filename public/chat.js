@@ -1,7 +1,7 @@
-import {getNaturalVoice} from './speech-request.js?v=16';
-import {voiceFailure,spokenExcerpt} from './voice-errors.js?v=16';
-import {waitTask} from './ai-tasks.js?v=16';
-import {providerFor,voiceFor} from './providers.js?v=16';
+import {getNaturalVoice} from './speech-request.js?v=17';
+import {voiceFailure,spokenExcerpt} from './voice-errors.js?v=17';
+import {waitTask} from './ai-tasks.js?v=17';
+import {providerFor,voiceFor} from './providers.js?v=17';
 // Asistente conversacional: IA optativa para comprensión, voz y transcripción.
 // Ningún movimiento se guarda hasta confirmar toda la tanda.
 export function setupChat({request,refresh,getAccounts,fmt,dateLabel,hasAI,openQuick,openDiagnostics}){
@@ -168,13 +168,15 @@ export function setupChat({request,refresh,getAccounts,fmt,dateLabel,hasAI,openQ
    const a=account(id),recurring=$('chatEditRecurring').checked;
    if(!date||!$('chatEditTitle').value.trim()||!(amount>0&&Number.isFinite(amount)))return say('Revisá el importe, la fecha y el concepto.');
    if(!Number.isInteger(count)||count<1||count>60)return say('Elegí entre una y sesenta cuotas.');
-   if(type==='expense'&&count>1&&a?.kind!=='credit')return say('Las cuotas requieren una tarjeta de crédito.');
+   if(type==='expense'&&count>1&&a?.kind!=='credit'&&!dueDate)
+     return say('Para este préstamo indicá el vencimiento de la primera cuota. No necesitás tarjeta de crédito. El importe es el de cada cuota.');
    if(type==='income'&&(dueDate||recurring||count>1))return say('Los ingresos no admiten vencimientos, cuotas ni gastos fijos.');
    if(recurring&&(count>1||a?.kind==='credit'))return say('El gasto fijo no se puede combinar con una compra financiada.');
    const before=chat.pending||chat.items[chat.editIndex]||{};
    const d={...before,type,title:$('chatEditTitle').value.trim(),amount:Math.round(amount*100)/100,
      date,dueDate:type==='income'?null:dueDate,category:$('chatEditCategory').value,
-     accountId:id,installmentCount:count,isRecurring:recurring,isPaid:$('chatEditPaid').checked,
+     accountId:id,installmentCount:count,financingType:count>1?(a?.kind==='credit'?'card':'loan'):null,
+     firstDueDate:count>1&&a?.kind!=='credit'?dueDate:null,isRecurring:recurring,isPaid:$('chatEditPaid').checked,
      notes:$('chatEditNotes').value,questions:[]};
    if(chat.editIndex===null)chat.items.push(d);else chat.items[chat.editIndex]=d;
    chat.pending=null;chat.editIndex=null;chat.phase=chat.returnPhase;editor.classList.add('hidden');
@@ -191,7 +193,8 @@ export function setupChat({request,refresh,getAccounts,fmt,dateLabel,hasAI,openQ
    try{
      const transactions=chat.items.map(t=>({type:t.type,title:t.title,amount:t.amount,date:t.date,
        dueDate:t.dueDate||null,category:t.category,accountId:t.accountId||null,
-       installmentCount:t.installmentCount||1,isRecurring:Boolean(t.isRecurring),isPaid:Boolean(t.isPaid),notes:t.notes||''}));
+       installmentCount:t.installmentCount||1,financingType:t.financingType||undefined,
+        firstDueDate:t.firstDueDate||t.dueDate||null,isRecurring:Boolean(t.isRecurring),isPaid:Boolean(t.isPaid),notes:t.notes||''}));
      const result=await request('/api/transactions/batch','POST',{transactions,requestId:chat.key});
      chat.phase='saved';review.classList.add('hidden');editor.classList.add('hidden');
      say('Listo, guardé '+result.count+' movimiento'+(result.count===1?'':'s')+'. Si querés, empezamos otra tanda.');

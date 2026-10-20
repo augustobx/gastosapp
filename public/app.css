@@ -147,3 +147,31 @@
  .express-actions{display:grid;grid-template-columns:1fr 1fr}
  .express-actions #expressToAI{grid-column:1/-1}
 }
+
+/* Financiación por débito, préstamos y programación múltiple de cuotas */
+.loan-options{display:grid;gap:10px;padding:12px;border:1px solid var(--border);border-radius:12px}
+.loan-options.hidden{display:none}
+.loan-options label{display:grid;gap:5px}
+.installment-dialog{width:min(94vw,780px);max-width:780px;max-height:92vh;overflow-y:auto}
+.installment-dialog .dialog-body{display:grid;gap:14px}
+.installment-actions-top{display:flex;gap:8px;flex-wrap:wrap}
+.installment-schedule{display:grid;gap:6px;max-height:46vh;overflow-y:auto;padding:2px}
+.installment-line{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:12px;align-items:center;border:1px solid var(--border);border-radius:10px;padding:12px;cursor:pointer}
+.installment-line.is-paid{opacity:.78}
+.installment-line input[type=checkbox]{width:19px;height:19px}
+.installment-line-info{display:grid;gap:4px;min-width:0}
+.installment-line-info strong{font-size:13px}
+.installment-line-info small{font-size:11px;color:var(--sub)}
+.installment-line-status{font-size:11px;color:var(--sub);text-align:right}
+.installment-payment-bar{display:grid;gap:9px;border-top:1px solid var(--border);padding-top:14px}
+.installment-payment-bar label{display:grid;gap:5px;font-size:12px}
+.installment-action-buttons{display:flex;gap:8px;flex-wrap:wrap}
+.installment-plan-row{flex-wrap:wrap;gap:9px}
+.installment-plan-row>div{min-width:160px;flex:1}
+@media(max-width:550px){
+ .installment-dialog .dialog-body{padding:15px}
+ .installment-line{grid-template-columns:auto minmax(0,1fr);gap:8px}
+ .installment-line-status{grid-column:2;text-align:left}
+ .installment-action-buttons{display:grid;grid-template-columns:1fr 1fr}
+ .installment-action-buttons #installmentUnpay{grid-column:1/-1}
+}

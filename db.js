@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { uid, isoDay, money, monthOf, schedule, project } from './lib/engine.js';
+import { uid, isoDay, money, monthOf, schedule, loanSchedule, project } from './lib/engine.js';
 
 const dataDir = process.env.DATA_DIR || path.join(process.cwd(), 'data');
 const dataFile = path.join(dataDir, 'gastosapp-v2.json');
@@ -83,9 +83,24 @@ function insertTransaction(s,data) {
       if(data.isPaid===true) recurring.paidMonths[date.slice(0,7)]=true;
       s.recurrences.unshift(recurring);return {kind:'recurrence',data:recurring};
     }
-    if(type==='expense' && (count>1 || a?.kind==='credit')) {
-      if(count>1 && a?.kind!=='credit')throw new Error('Seleccioná una tarjeta de crédito para las cuotas');
-      const purchase={id:uid(),title,amount,date,category,notes,accountId,
+    if(type==='expense' && (count>1 || a?.kind==='credit')){
+      const financingType=data.financingType==='loan'?'loan':data.financingType==='card'?'card':
+        (a?.kind==='credit'?'card':'loan');
+      if(financingType==='card'&&a?.kind!=='credit')
+        throw new Error('Para una compra con tarjeta, elegí una tarjeta de crédito. Para un préstamo por débito o transferencia, seleccioná "Préstamo / financiación".');
+      if(financingType==='loan'&&count<2)throw new Error('El préstamo debe tener al menos dos cuotas');
+      if(financingType==='loan'){
+        const firstDueDate=dateField(data.firstDueDate||data.dueDate||'');
+        if(!data.firstDueDate&&!data.dueDate)throw new Error('Indicá la fecha de vencimiento de la primera cuota del préstamo');
+        const installments=loanSchedule({installmentAmount:amount,count,firstDueDate});
+        const total=money(amount*count);
+        if(!Number.isSafeInteger(Math.round(total*100)))throw new Error('El total financiado es demasiado grande');
+        const plan={id:uid(),financingType:'loan',title,amount:total,installmentAmount:amount,
+          firstDueDate,date,category,notes,accountId,installments,
+          createdAt:new Date().toISOString()};
+        s.purchases.unshift(plan);return {kind:'loan',data:plan};
+      }
+      const purchase={id:uid(),financingType:'card',title,amount,date,category,notes,accountId,
         installments:schedule({amount,count,date,account:a}),createdAt:new Date().toISOString()};
       s.purchases.unshift(purchase);return {kind:'purchase',data:purchase};
     }
@@ -102,7 +117,14 @@ export const store = {
     if (!/^\d{4}-\d{2}$/.test(month)) throw new Error('Mes inválido');
     return {version:s.version, settings:s.settings, accounts:s.accounts, ...project(s,month),
       purchases:s.purchases.map(p=>({id:p.id,title:p.title,amount:p.amount,date:p.date,
-        count:p.installments.length,accountId:p.accountId})),
+        count:p.installments.length,accountId:p.accountId,category:p.category,
+        financingType:p.financingType||'card',installmentAmount:p.installmentAmount||
+          (p.installments.length?p.installments[0].amount:0),
+        paidCount:p.installments.filter(i=>i.isPaid).length,
+        unpaidTotal:money(p.installments.filter(i=>!i.isPaid).reduce((t,i)=>t+i.amount,0)),
+        installments:p.installments.map(i=>({id:i.id,number:i.number,total:i.total,amount:i.amount,
+          dueDate:i.dueDate,plannedDate:i.plannedDate||null,paidDate:i.paidDate||null,
+          isPaid:i.isPaid===true,paidAt:i.paidAt||null}))})),
       recurrences:s.recurrences.map(r=>({id:r.id,title:r.title,amount:r.amount,startDate:r.startDate}))};
   },
   settings(data) {
@@ -203,6 +225,42 @@ export const store = {
     }
     if(data.isPaid!==undefined) {t.isPaid=Boolean(data.isPaid);t.paidAt=t.isPaid?new Date().toISOString():null;}
     persist();return t;
+  },
+  // Programar o liquidar varias cuotas atómicamente, sin crear gastos extra.
+  updateInstallments({ids,action,date}){
+    if(!Array.isArray(ids)||ids.length===0||ids.length>60||
+       ids.some(id=>typeof id!=='string')||new Set(ids).size!==ids.length)
+      throw new Error('Seleccioná entre 1 y 60 cuotas diferentes');
+    if(!['plan','pay','unpay'].includes(action))throw new Error('Acción de cuotas inválida');
+    const effectiveDate=action==='unpay'?null:dateField(date);
+    if(action==='pay'&&effectiveDate>isoDay(new Date()))
+      throw new Error('No se puede marcar como pagado algo que todavía no ocurrió. Usá Programar para una fecha futura.');
+    const previous=get(),working=structuredClone(previous);
+    const items=ids.map(id=>{
+      for(const plan of working.purchases){
+        const installment=plan.installments.find(i=>i.id===id);
+        if(installment)return {plan,installment};
+      }
+      throw new Error('Una de las cuotas seleccionadas no existe');
+    });
+    if(action==='plan'&&items.some(({installment})=>installment.isPaid))
+      throw new Error('No se puede reprogramar una cuota ya pagada; primero desmarcala');
+    if(action==='pay'&&items.some(({installment})=>installment.isPaid))
+      throw new Error('Una cuota ya está pagada; revisá la selección');
+    if(action==='unpay'&&items.some(({installment})=>!installment.isPaid))
+      throw new Error('Seleccioná únicamente cuotas que estén pagadas');
+    let total=0;
+    for(const {installment} of items){
+      total=money(total+installment.amount);
+      if(action==='plan')installment.plannedDate=effectiveDate;
+      else if(action==='pay'){
+        installment.isPaid=true;installment.paidAt=new Date().toISOString();
+        installment.paidDate=effectiveDate;
+      }else{installment.isPaid=false;installment.paidAt=null;installment.paidDate=null;}
+    }
+    state=working;
+    try{persist();}catch(error){state=previous;throw error;}
+    return {count:items.length,total,date:effectiveDate,action};
   },
   setPaid(id,isPaid) {
     const s=get();let item=s.transactions.find(t=>t.id===id);
