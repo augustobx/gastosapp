@@ -1,6 +1,7 @@
-import {voiceFailure} from './voice-errors.js?v=13';
-import {waitTask,describeAiError} from './ai-tasks.js?v=13';
-import {providerFor,saveProvider,voiceFor,saveVoice} from './providers.js?v=13';
+import {getNaturalVoice} from './speech-request.js?v=14';
+import {voiceFailure} from './voice-errors.js?v=14';
+import {waitTask,describeAiError} from './ai-tasks.js?v=14';
+import {providerFor,saveProvider,voiceFor,saveVoice} from './providers.js?v=14';
 // Diagnóstico visible por modelo: nunca pedir ni mostrar la clave API.
 export function setupAIDiagnostics(){
  const $=id=>document.getElementById(id);
@@ -152,25 +153,21 @@ export function setupAIDiagnostics(){
  }
  async function previewVoice(){
   const btn=$('aiPreviewVoice');btn.disabled=true;
-  voiceNote('Solicitando voz «'+$('aiVoiceSelect').value+'» al modelo. Esperá unos segundos.','neutral');
+  voiceNote('Generando una muestra. No cierres la pantalla hasta escucharla.','neutral');
   if(playerUrl){URL.revokeObjectURL(playerUrl);playerUrl=null;}
   try{
-   const r=await fetch('/api/chat/speech',{method:'POST',credentials:'same-origin',
-    headers:{'Content-Type':'application/json'},body:JSON.stringify({text:'Hola, ¿cómo andás? Soy tu asistente de GastosApp. Contame tus gastos y los organizamos juntos.',voice:$('aiVoiceSelect').value,provider:providerFor('tts')})});
-   if(!r.ok){
-    const error=await voiceFailure(r,'Prueba de voz natural');
-    voiceNote(error.message,'error');return;
-   }
-   const contentType=String(r.headers.get('content-type')||'').toLowerCase();
-   if(!contentType.startsWith('audio/')){
-    voiceNote('GastosApp HTTP 200 pero respondió '+(contentType||'sin Content-Type')+' en vez de audio. Revisá los logs de GastosApp.','error');
-    return;
-   }
-   const blob=await r.blob();playerUrl=URL.createObjectURL(blob);
+   const provider=providerFor('tts'),voice=$('aiVoiceSelect').value;
+   const result=await getNaturalVoice({
+    text:'Hola, ¿cómo andás? Soy tu asistente de GastosApp. Contame tus gastos y los organizamos juntos.',
+    voice,provider,onProgress:message=>voiceNote(message,'neutral')
+   });
+   playerUrl=URL.createObjectURL(result.blob);
    const player=$('aiVoicePlayer');player.src=playerUrl;player.classList.remove('hidden');
-   voiceNote(providerLabel(providerFor('tts'))+' HTTP 200: audio generado correctamente con voz '+$('aiVoiceSelect').value+'. Si no se reproduce automáticamente, tocá ▶ en el reproductor.','ok');
+   voiceNote(providerLabel(provider)+' · WAV/MP3 generado correctamente'+
+    (result.reused?' (muestra reutilizada sin nueva generación)':'')+
+    '. Si no se reproduce automáticamente, tocá ▶.','ok');
    try{await player.play();}catch{/* El usuario puede reproducir con controles nativos */}
-  }catch(e){voiceNote('No se pudo descargar/reproducir la muestra: '+e.message+'. Revisá HTTPS, red y permisos de reproducción.');}
+  }catch(e){voiceNote(e.message||'No se pudo generar o descargar la voz.','error');}
   finally{btn.disabled=false;}
  }
  for(const service of ['nlu','stt','tts'])$('aiTest'+label[service]).addEventListener('click',async()=>{
