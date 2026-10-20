@@ -10,8 +10,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/app.css?v=7">
-  <script defer type="module" src="/app.js?v=7"></script>
+  <link rel="stylesheet" href="/app.css?v=8">
+  <script defer type="module" src="/app.js?v=8"></script>
   <title>GastosApp · Mis finanzas</title>
 </head>
 <body>
@@ -82,6 +82,56 @@
         <section class="view" id="view-settings"><div class="section-toolbar"><div><h2>Configuración</h2><p>Personalizá tu control financiero.</p></div></div>
           <div class="settings-grid"><form id="salaryForm" class="panel settings-panel"><h3>Tu ingreso mensual</h3><p>El sueldo base se proyecta automáticamente cada mes.</p><label>Sueldo mensual en ARS<input id="salaryInput" type="number" min="0" step="0.01" required></label><button class="btn btn-primary" type="submit">Guardar sueldo</button></form>
             <div class="panel settings-panel"><h3>Privacidad y seguridad</h3><p>Tu cuenta está protegida por una contraseña. Las operaciones por voz siempre se confirman antes de guardar.</p><button class="btn btn-muted" id="exportBtn">↓ Exportar respaldo JSON</button><button class="btn btn-quiet" id="logoutBtn">Cerrar sesión</button></div></div>
+
+          <section class="panel ai-settings-panel" id="aiSettingsPanel" aria-label="Diagnóstico de inteligencia artificial">
+            <div class="ai-settings-heading">
+              <div><span class="eyebrow">CENTRO DE DIAGNÓSTICO</span><h3>Conexión con OpenAI</h3>
+                <p>Verificá cada modelo por separado. Mostramos el HTTP real que devuelve OpenAI, el código de error y cómo solucionarlo.</p></div>
+              <span id="aiConnectionState" class="ai-status-tag">Sin verificar</span>
+            </div>
+            <div id="aiConfigMessage" class="ai-notice" role="status">Cargando configuración de los modelos...</div>
+            <div class="ai-diagnostic-table">
+              <div class="ai-service" data-ai-service="nlu">
+                <div><strong>Interpretación y conversación</strong><small id="aiModelNlu">gpt-4o-mini</small></div>
+                <span id="aiStateNlu" class="ai-state">Sin probar</span><button id="aiTestNlu" class="btn btn-muted" type="button">Probar</button>
+                <p id="aiDetailNlu" class="ai-detail">Comprueba que el modelo genere una respuesta válida. Puede consumir tokens.</p>
+              </div>
+              <div class="ai-service" data-ai-service="stt">
+                <div><strong>Transcripción de voz</strong><small id="aiModelStt">gpt-4o-mini-transcribe</small></div>
+                <span id="aiStateStt" class="ai-state">Sin probar</span><button id="aiTestStt" class="btn btn-muted" type="button">Probar</button>
+                <p id="aiDetailStt" class="ai-detail">Envía un archivo WAV de prueba con silencio; HTTP 200 confirma la conexión, no la calidad del micrófono.</p>
+              </div>
+              <div class="ai-service" data-ai-service="tts">
+                <div><strong>Voz natural</strong><small id="aiModelTts">gpt-4o-mini-tts</small></div>
+                <span id="aiStateTts" class="ai-state">Sin probar</span><button id="aiTestTts" class="btn btn-muted" type="button">Probar</button>
+                <p id="aiDetailTts" class="ai-detail">Genera audio de prueba; después escuchalo para valorar la calidad.</p>
+              </div>
+            </div>
+            <div class="ai-settings-actions">
+              <button id="aiTestAll" type="button" class="btn btn-primary">Diagnosticar los 3 modelos</button>
+              <button id="aiRefreshSettings" type="button" class="btn btn-muted">Actualizar estado</button>
+            </div>
+            <div class="ai-microphone-test">
+              <div><strong>Prueba de micrófono real</strong><p>Grabá 3–5 segundos diciendo «probando, uno, dos, tres». Verificamos permisos, formato del navegador y respuesta del modelo.</p></div>
+              <button id="aiTestMicrophone" type="button" class="btn btn-muted">🎙 Probar micrófono</button>
+              <div id="aiMicResult" role="status" class="ai-notice">Todavía no se probó el micrófono.</div>
+            </div>
+            <div class="ai-voice-config">
+              <label>Voz natural preferida
+                <select id="aiVoiceSelect">
+                  <option value="marin">Marin · natural y cercana</option><option value="cedar">Cedar · cálida y grave</option>
+                  <option value="coral">Coral · expresiva</option><option value="nova">Nova</option>
+                  <option value="alloy">Alloy</option><option value="sage">Sage</option>
+                  <option value="shimmer">Shimmer</option><option value="verse">Verse</option>
+                  <option value="ash">Ash</option><option value="ballad">Ballad</option><option value="echo">Echo</option>
+                </select>
+              </label>
+              <button id="aiPreviewVoice" type="button" class="btn btn-muted">▶ Escuchar voz real</button>
+              <audio id="aiVoicePlayer" controls class="hidden" preload="none" aria-label="Muestra de voz"></audio>
+            </div>
+            <div id="aiVoiceMessage" class="ai-notice hidden" role="alert"></div>
+            <p class="ai-fineprint">Estas pruebas hacen llamadas reales a la API y pueden consumir créditos. Ninguna prueba registra gastos. No se muestra la API Key. Un HTTP 200 indica que ese modelo respondió, no garantiza que cada dictado futuro vaya a ser correcto.</p>
+          </section>
         </section>
       </main>
     </div>
@@ -109,7 +159,7 @@
     <div class="dialog-body chat-body">
       <div class="dialog-heading"><div><span class="eyebrow">ASISTENTE CONVERSACIONAL</span><h2>Charlemos de tus gastos ✦</h2></div>
         <button type="button" class="icon-btn close-dialog" aria-label="Cerrar conversación">✕</button></div>
-      <p class="assistant-description">Contame los gastos uno por uno. Al decir «nada más», los repasamos y recién los guardamos cuando confirmes.</p>
+      <p class="assistant-description">Hablá como lo harías con alguien de confianza. Podés mencionar varios gastos juntos, corregirlos hablando y repasar la tanda antes de guardarla.</p>
       <div id="chatMessages" class="chat-messages" role="log" aria-live="polite" aria-label="Conversación con el asistente"></div>
       <section id="chatReview" class="chat-review hidden" aria-label="Resumen de movimientos pendientes"></section>
       <section id="chatEditor" class="chat-editor hidden">
@@ -143,6 +193,9 @@
         <label id="chatBetterSTTOption" class="hidden"><input id="chatBetterSTT" type="checkbox" checked> Transcripción precisa (IA)</label>
         <label><input id="chatHandsFree" type="checkbox"> Manos libres (dictado del navegador)</label>
       </div>
+      <div id="chatAlert" class="ai-chat-alert hidden" role="alert"></div>
+      <button id="chatOpenDiagnostics" type="button" class="btn btn-muted hidden">Abrir pruebas de IA en Configuración →</button>
+      <div class="chat-replay-line"><button type="button" id="chatReplayVoice" class="btn btn-muted">▶ Volver a escuchar la última respuesta</button><small>Voz generada por IA · la app avisa si falla, no cambia de voz sin consultarte.</small></div>
       <div class="chat-input-row">
         <input id="chatInput" type="text" maxlength="850" autocomplete="off" placeholder="Contame varios gastos juntos,, «nada más» o «sí, guardar»" aria-label="Tu mensaje">
         <button id="chatMic" type="button" class="icon-btn chat-mic" aria-label="Hablar">🎙</button>

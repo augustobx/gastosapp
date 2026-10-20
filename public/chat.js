@@ -1,13 +1,13 @@
 // Asistente conversacional: IA optativa para comprensión, voz y transcripción.
 // Ningún movimiento se guarda hasta confirmar toda la tanda.
-export function setupChat({request,refresh,getAccounts,fmt,dateLabel,hasAI,openQuick}){
+export function setupChat({request,refresh,getAccounts,fmt,dateLabel,hasAI,openQuick,openDiagnostics}){
  const $=id=>document.getElementById(id);
  const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  const norm=x=>String(x||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[!?.,;:]+/g,' ').trim().replace(/\s+/g,' ');
  const cats=['Comida','Servicios','Hogar','Transporte','Salud','Educación','Tecnología','Entretenimiento','Indumentaria','Deudas y préstamos','Otros','Extra','Sueldo','Ventas'];
  const dlg=$('chatDialog'),messages=$('chatMessages'),review=$('chatReview'),editor=$('chatEditor');
  const chat={items:[],pending:null,editIndex:null,returnPhase:'collect',phase:'collect',busy:false,
-   closed:true,speaker:null,voiceAbort:null,voiceUrl:null,voiceSeq:0,unresolved:null,recognizer:null,recorder:null,stream:null,chunks:[],key:null};
+   closed:true,speaker:null,voiceAbort:null,voiceUrl:null,voiceSeq:0,lastSpoken:'',unresolved:null,recognizer:null,recorder:null,stream:null,chunks:[],key:null,recordStarted:0};
  const account=id=>getAccounts().find(a=>a.id===id);
  const welcome='Dale, decime el primer gasto o ingreso. Cuando termines, decí "nada más". Después los repasamos juntos.';
  const key=()=>Date.now().toString(36)+'-'+(crypto.randomUUID?.()||Math.random().toString(36).slice(2));
@@ -16,6 +16,16 @@ export function setupChat({request,refresh,getAccounts,fmt,dateLabel,hasAI,openQ
    messages.append(el);messages.scrollTop=messages.scrollHeight;
  }
  function status(value){$('chatStatus').textContent=value;}
+ function clearAlert(){$('chatAlert').textContent='';$('chatAlert').classList.add('hidden');$('chatOpenDiagnostics').classList.add('hidden');}
+ function alertIssue(message){
+   $('chatAlert').textContent=message;$('chatAlert').classList.remove('hidden');$('chatOpenDiagnostics').classList.remove('hidden');status('Hay un problema con el audio. Revisá el aviso.');
+ }
+ async function audioProblem(response,operation){
+   let info={};try{info=await response.json();}catch{}
+   const who=info.upstreamStatus?'OpenAI HTTP '+info.upstreamStatus:'GastosApp HTTP '+response.status;
+   return operation+': '+who+' · '+(info.code||'error')+' · '+(info.error||'Sin detalle del servidor')+
+     (info.hint?' · SOLUCIÓN: '+info.hint:'')+(info.requestId?' · ID OpenAI: '+info.requestId:'');
+ }
  function stopVoice(){
    chat.voiceSeq++;
    chat.voiceAbort?.abort();chat.voiceAbort=null;
@@ -28,44 +38,59 @@ export function setupChat({request,refresh,getAccounts,fmt,dateLabel,hasAI,openQ
    if(seq!==chat.voiceSeq||chat.closed||chat.busy||!$('chatHandsFree').checked||chat.phase==='edit'||chat.phase==='saved')return;
    startMic();
  }
- function fallbackVoice(message,seq){
-   if(!('speechSynthesis' in window)||seq!==chat.voiceSeq)return;
-   const utterance=new SpeechSynthesisUtterance(message);utterance.lang='es-AR';utterance.rate=1.03;
+ function browserVoice(message,seq){
+   if(!('speechSynthesis' in window)||seq!==chat.voiceSeq)return alertIssue('Este navegador no dispone de voz integrada. Podés leer el mensaje en pantalla.');
+   const utterance=new SpeechSynthesisUtterance(message);utterance.lang='es-AR';utterance.rate=1.02;
    const voices=window.speechSynthesis.getVoices();
    utterance.voice=voices.find(v=>v.lang.toLowerCase()==='es-ar')||
-     voices.find(v=>v.lang.toLowerCase().startsWith('es'))||null;
+      voices.find(v=>v.lang.toLowerCase().startsWith('es'))||null;
    chat.speaker=utterance;
    utterance.onend=()=>{if(chat.speaker===utterance){chat.speaker=null;listenAfterSpeech(seq);}};
-   try{window.speechSynthesis.speak(utterance);}catch{}
+   try{window.speechSynthesis.speak(utterance);}catch(e){alertIssue('No se pudo usar la voz del navegador: '+e.message);}
  }
- function say(message){
-   bubble('assistant',message);
+ function voiceText(message){
+   if(message.length<=620)return message;
+   // No cortar un número, fecha o concepto a mitad al sintetizar.
+   const cut=message.slice(0,500);const end=Math.max(cut.lastIndexOf('. '),cut.lastIndexOf(' ¿'));
+   return (end>180?cut.slice(0,end+1):cut)+' El detalle completo quedó escrito en el chat.';
+ }
+ function preferredVoice(){
+   try{return localStorage.getItem('gastosapp-tts-voice')||'marin';}catch{return 'marin';}
+ }
+ function say(message,{bubbleOnly=false}={}){
+   if(!bubbleOnly)bubble('assistant',message);
+   chat.lastSpoken=message;
    stopVoice();
    if(!$('chatSpeak').checked)return;
    const seq=chat.voiceSeq;
    if(!hasAI()||!$('chatNaturalVoice').checked){
-     fallbackVoice(message,seq);return;
+     browserVoice(message,seq);return;
    }
    const abort=new AbortController();chat.voiceAbort=abort;
    void(async()=>{
      try{
+       status('Generando voz natural ('+preferredVoice()+')...');
        const response=await fetch('/api/chat/speech',{method:'POST',credentials:'same-origin',
-         headers:{'Content-Type':'application/json'},body:JSON.stringify({text:String(message).slice(0,620)}),
-         signal:abort.signal});
-       if(!response.ok)throw new Error('Voz IA no disponible');
+         headers:{'Content-Type':'application/json'},
+         body:JSON.stringify({text:voiceText(message),voice:preferredVoice()}),signal:abort.signal});
+       if(!response.ok)throw new Error(await audioProblem(response,'Voz natural'));
        const audioBlob=await response.blob();
+       if(audioBlob.size<100)throw new Error('La API devolvió HTTP 200 pero el audio está vacío.');
        if(abort.signal.aborted||seq!==chat.voiceSeq||chat.closed)return;
        const url=URL.createObjectURL(audioBlob);chat.voiceUrl=url;
        const audio=new Audio(url);chat.speaker=audio;
        audio.onended=()=>{if(chat.speaker===audio){chat.speaker=null;
          URL.revokeObjectURL(url);chat.voiceUrl=null;listenAfterSpeech(seq);}};
-       audio.onerror=()=>{if(seq===chat.voiceSeq){status('Audio de IA no disponible; usando la voz del navegador.');
-         fallbackVoice(message,seq);}};
-       await audio.play();
+       audio.onerror=()=>{if(seq===chat.voiceSeq){
+         alertIssue('La API generó voz, pero este navegador no pudo decodificar el MP3. Abrí Configuración → Escuchar voz real para probar el reproductor.');}};
+       try{await audio.play();clearAlert();status('Voz natural en reproducción.');}
+       catch(e){
+         if(e.name==='NotAllowedError')alertIssue('El navegador bloqueó la reproducción automática. Tocá «Volver a escuchar» para iniciar el audio con una acción tuya. No usé la voz robótica.');
+         else alertIssue('No pude reproducir el MP3: '+e.message+'. Probá el reproductor de muestra en Configuración.');
+       }
      }catch(error){
        if(error.name==='AbortError'||seq!==chat.voiceSeq||chat.closed)return;
-       status('No se pudo reproducir la voz natural. Uso la voz del navegador.');
-       fallbackVoice(message,seq);
+       alertIssue(error.message+' · Configuración → Conexión con OpenAI → Probar voz natural. La app no cambiará a la voz robótica sin avisar.');
      }finally{if(chat.voiceAbort===abort)chat.voiceAbort=null;}
    })();
  }
@@ -78,7 +103,7 @@ export function setupChat({request,refresh,getAccounts,fmt,dateLabel,hasAI,openQ
  function reset(){
    stopMic();stopVoice();
    chat.items=[];chat.pending=null;chat.unresolved=null;chat.editIndex=null;chat.phase='collect';chat.busy=false;chat.key=key();
-   messages.replaceChildren();review.classList.add('hidden');editor.classList.add('hidden');
+   messages.replaceChildren();review.classList.add('hidden');editor.classList.add('hidden');clearAlert();
    $('chatInput').value='';status('Podés hablar o escribir.');say(welcome);
  }
  function close(){chat.closed=true;stopMic();stopVoice();if(dlg.open)dlg.close();}
@@ -220,6 +245,7 @@ export function setupChat({request,refresh,getAccounts,fmt,dateLabel,hasAI,openQ
  }
  async function processMessage(raw){
    const text=String(raw||'').trim();if(!text||chat.busy)return;
+   clearAlert();
    stopVoice();bubble('user',text);$('chatInput').value='';
    const cmd=norm(text);
    if(chat.phase==='saved'){
@@ -278,24 +304,50 @@ export function setupChat({request,refresh,getAccounts,fmt,dateLabel,hasAI,openQ
      status('El navegador no tiene dictado nativo. Podés escribir o configurar la transcripción por API.');
      return;
    }
-   void navigator.mediaDevices.getUserMedia({audio:true}).then(stream=>{
+   void navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}}).then(stream=>{
      if(chat.closed){stream.getTracks().forEach(t=>t.stop());return;}
-     chat.stream=stream;chat.chunks=[];const rec=new MediaRecorder(stream);chat.recorder=rec;
+     chat.stream=stream;chat.chunks=[];
+     const options=['audio/webm;codecs=opus','audio/mp4','audio/webm','audio/ogg;codecs=opus']
+       .find(t=>MediaRecorder.isTypeSupported?.(t));
+     let rec;
+     try{rec=new MediaRecorder(stream,options?{mimeType:options}:undefined);}
+     catch(e){stream.getTracks().forEach(t=>t.stop());chat.stream=null;throw e;}
+     chat.recorder=rec;chat.recordStarted=Date.now();
      rec.ondataavailable=e=>{if(e.data.size)chat.chunks.push(e.data);};
+     rec.onerror=e=>{alertIssue('Falló la grabación en el navegador: '+(e.error?.message||'Error del dispositivo de audio')+'. Revisá el micrófono y permisos.');};
      rec.onstop=async()=>{
        $('chatMic').classList.remove('recording');stream.getTracks().forEach(t=>t.stop());
-       chat.stream=null;if(chat.closed){chat.recorder=null;return;}
-       status('Transcribiendo...');
+       chat.stream=null;chat.recorder=null;
+       if(chat.closed)return;
+       const elapsed=Date.now()-chat.recordStarted;
+       const blob=new Blob(chat.chunks,{type:rec.mimeType||options||'audio/webm'});
+       const rawType=blob.type||'audio/webm';
+       if(elapsed<850||blob.size<500){
+         alertIssue('La grabación duró '+(elapsed/1000).toFixed(1)+' s y produjo '+blob.size+
+           ' bytes. Mantené el micrófono activo al menos un segundo; tocá otra vez para detener después de hablar.');
+         return;
+       }
+       status('Enviando '+(blob.size/1024).toFixed(0)+' KB ('+rawType+') al modelo de transcripción...');
        try{
-         const blob=new Blob(chat.chunks,{type:rec.mimeType||'audio/webm'});
-         const resp=await fetch('/api/voice/transcribe',{method:'POST',credentials:'same-origin',headers:{'Content-Type':blob.type},body:blob});
-         const data=await resp.json();if(!resp.ok)throw new Error(data.error||'Error de transcripción');
-         if(data.data?.text&&!chat.closed)await processMessage(data.data.text);
-       }catch(e){status('No pude transcribir: '+e.message);}
-       finally{chat.recorder=null;}
+         const resp=await fetch('/api/voice/transcribe',{method:'POST',credentials:'same-origin',
+           headers:{'Content-Type':rawType},body:blob});
+         if(!resp.ok)throw new Error(await audioProblem(resp,'Transcripción'));
+         const data=await resp.json();
+         if(!data.data?.text)throw new Error('La API respondió sin texto. Revisá el micrófono y volvé a grabar.');
+         clearAlert();status('Transcripción HTTP '+(data.data.httpStatus||resp.status)+
+           ' · '+data.data.model+' · '+data.data.text);
+         if(!chat.closed)await processMessage(data.data.text);
+       }catch(e){
+         alertIssue(e.message+' · Podés escribir el movimiento o ir a Configuración → Probar transcripción para identificar la causa.');
+       }
      };
-     rec.start();$('chatMic').classList.add('recording');status('Grabando... tocá para detener.');
-   }).catch(e=>status('Micrófono no disponible: '+e.message));
+     rec.start();$('chatMic').classList.add('recording');
+     clearAlert();status('Grabando... hablá normalmente y tocá el micrófono otra vez para detener ('+(rec.mimeType||'formato automático')+').');
+   }).catch(e=>alertIssue(
+     e.name==='NotAllowedError'?'No hay permiso de micrófono. Habilitalo para este sitio desde el candado del navegador.':
+     e.name==='NotFoundError'?'No encontré ningún micrófono disponible. Conectá uno y recargá la página.':
+     'No se pudo iniciar la grabación: '+e.message));
+
  }
  document.querySelectorAll('.assistant-open').forEach(el=>el.addEventListener('click',open));
  document.querySelectorAll('#chatDialog .close-dialog').forEach(el=>el.addEventListener('click',close));
@@ -324,6 +376,14 @@ export function setupChat({request,refresh,getAccounts,fmt,dateLabel,hasAI,openQ
    }
    if(e.target.closest('#chatMore')){chat.phase='collect';say('Dale, decime el siguiente.');}
    if(e.target.closest('#chatSaveAll')){if(chat.phase==='confirm')void saveBatch();else summarize();}
+ });
+ $('chatOpenDiagnostics').addEventListener('click',()=>{close();openDiagnostics();});
+ $('chatReplayVoice').addEventListener('click',()=>{
+   if(!chat.lastSpoken)return alertIssue('Todavía no hay ningún mensaje para reproducir.');
+   if(chat.speaker instanceof HTMLAudioElement && chat.speaker.src){
+     void chat.speaker.play().then(()=>{clearAlert();status('Reproduciendo voz natural.');})
+       .catch(e=>alertIssue('No se pudo reproducir el audio: '+e.message));
+   }else say(chat.lastSpoken,{bubbleOnly:true});
  });
  $('chatSpeak').addEventListener('change',()=>{if(!$('chatSpeak').checked)stopVoice();});
  $('chatNaturalVoice').addEventListener('change',()=>stopVoice());
