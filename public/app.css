@@ -220,3 +220,21 @@
  .movement-bulk #movementBulkClear{grid-column:1/-1}
  .movement-table{min-width:840px}
 }
+
+/* Biometría y notificaciones: permisos explícitos, diseño responsivo */
+.security-feature-panel{display:grid;gap:12px;margin-top:16px}
+.security-feature-panel h4{margin:4px 0;font-size:13px}
+.security-feature-panel label{display:grid;gap:6px}
+.security-feature-panel input[type=text]{min-width:0;width:100%}
+.security-feature-panel .checkbox-field{display:flex;align-items:center;gap:10px}
+.security-feature-panel .checkbox-field input{width:18px;height:18px}
+.security-devices{display:grid;gap:8px}
+.security-device{display:flex;justify-content:space-between;align-items:center;gap:12px;border:1px solid var(--border);border-radius:10px;padding:10px}
+.security-device span{font-size:12px;overflow-wrap:anywhere}
+.notification-preferences{display:grid;gap:12px;padding:12px;border:1px solid var(--border);border-radius:12px}
+.notification-preferences select{max-width:240px}
+.security-feature-buttons{display:flex;gap:9px;align-items:center;flex-wrap:wrap}
+.security-feature-panel [data-kind=error]{color:#ca4848}
+@media(max-width:540px){.security-device{align-items:flex-start;flex-wrap:wrap}
+.security-feature-buttons{display:grid;grid-template-columns:1fr 1fr}
+.security-feature-buttons button{min-height:44px}}

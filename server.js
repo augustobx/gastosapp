@@ -12,6 +12,10 @@ import {makeJobs} from './lib/ai-jobs.js';
 import {createSpeechJobs} from './lib/speech-jobs.js';
 import {usageLedger} from './lib/ai-usage.js';
 import {parseExpress} from './public/express-parse.js';
+import webpush from 'web-push';
+import {createDeviceStore} from './lib/device-store.js';
+import {createPasskeyManager} from './lib/passkeys.js';
+import {createPushService} from './lib/push-service.js';
 
 const port=Number(process.env.PORT||3000);
 const password=process.env.APP_PASSWORD||'';
@@ -27,6 +31,10 @@ app.use(express.json({limit:'128kb'}));
 const sessions=new Map();
 const aiJobs=makeJobs();
 const speechJobs=createSpeechJobs();
+const deviceStore=createDeviceStore();
+const passkeys=createPasskeyManager({store:deviceStore,appOrigin:process.env.APP_ORIGIN||''});
+const pushService=createPushService({store:deviceStore,webpush,appOrigin:process.env.APP_ORIGIN||'',
+ financialState:()=>store.export()});
 const attempts=new Map();
 const highCostAttempts=new Map();
 function limited(maxPerMinute){return (req,res,next)=>{
@@ -89,6 +97,24 @@ app.post('/api/logout',(req,res)=>{
   const token=cookies(req).gastos_session;if(token)sessions.delete(sha(token).toString('hex'));
   setSessionCookie(req,res,'',0);res.json({ok:true});
 });
+// WebAuthn: inicio sin contraseña SOLO con un dispositivo registrado previamente.
+app.get('/api/security/capabilities',(_req,res)=>res.json({ok:true,data:{
+ passkeysReady:passkeys.ready,passkeysRegistered:passkeys.list().length>0,
+ pushReady:pushService.ready
+}}));
+app.post('/api/passkeys/login/options',limited(10),async(req,res)=>{
+ try{res.json({ok:true,data:await passkeys.authenticationOptions()});}
+ catch(e){res.status(e.status||400).json({error:e.message});}
+});
+app.post('/api/passkeys/login/verify',limited(10),async(req,res)=>{
+ try{
+  await passkeys.authenticationFinish(req.body||{});
+  const token=crypto.randomBytes(32).toString('hex');
+  sessions.set(sha(token).toString('hex'),Date.now()+30*86400000);
+  setSessionCookie(req,res,token,30*86400);
+  res.json({ok:true,data:{authenticated:true}});
+ }catch(e){console.warn('WebAuthn: inicio rechazado');res.status(e.status||400).json({error:'No se pudo verificar la passkey. Probá de nuevo o usá tu contraseña.'});}
+});
 app.use('/api',(req,res,next)=>auth(req)?next():res.status(401).json({error:'Sesión requerida'}));
 
 const jobOwner=req=>sha(cookies(req).gastos_session||'local-dev').toString('hex');
@@ -96,6 +122,37 @@ const queueJob=(req,res,work)=>{res.status(202);return aiJobs.start(jobOwner(req
 const wrap=fn=>async(req,res)=>{try{const value=await fn(req,res);if(!res.headersSent)res.json({ok:true,data:value});}
   catch(e){const detail=publicError(e);console.error('API',req.path,detail.code,detail.upstreamStatus||'',detail.error);
     if(!res.headersSent)res.status(e.status||400).json(detail);}};
+// Passkeys: sólo se pueden registrar o revocar desde una sesión autenticada.
+app.get('/api/passkeys',limited(30),wrap(()=>({
+ enabled:passkeys.ready,devices:passkeys.list()
+})));
+app.post('/api/passkeys/register/options',limited(10),wrap(req=>
+ passkeys.registrationOptions(jobOwner(req))));
+app.post('/api/passkeys/register/verify',limited(10),wrap(req=>
+ passkeys.registrationFinish(jobOwner(req),req.body)));
+app.delete('/api/passkeys/:id',limited(10),wrap(req=>{
+ if(!password||!same(req.body?.password||'',password))
+  throw Object.assign(new Error('Confirmá tu contraseña para quitar el dispositivo.'),{status:403});
+ passkeys.remove(req.params.id);return {revoked:true};
+}));
+// Web Push: consentimiento explícito del navegador, mensajes sin importes ni comercios.
+app.get('/api/push/config',limited(30),wrap(()=>{
+ const enabled=pushService.ready;
+ return {enabled,publicKey:enabled?pushService.keys().publicKey:null,
+  devices:deviceStore.subscriptions().length,prefs:deviceStore.prefs()};
+}));
+app.patch('/api/push/preferences',limited(15),wrap(req=>
+ deviceStore.updatePrefs(req.body||{})));
+app.post('/api/push/subscribe',limited(12),wrap(req=>{
+ if(!pushService.ready)throw Object.assign(new Error('Configurá APP_ORIGIN antes de habilitar notificaciones.'),{status:503});
+ return {count:deviceStore.subscribe(req.body?.subscription)};
+}));
+app.post('/api/push/unsubscribe',limited(12),wrap(req=>({
+ count:deviceStore.unsubscribe(req.body?.endpoint)
+})));
+app.post('/api/push/test',limited(4),wrap(req=>
+ pushService.testNotification(req.body?.endpoint)));
+
 app.get('/api/ai/tasks/:id',limited(50),wrap(req=>aiJobs.get(jobOwner(req),req.params.id)));
 app.get('/api/ai/usage',limited(45),wrap(req=>usageLedger.report(['today','month','all'].includes(req.query.period)?req.query.period:'month')));
 // Modo Express: el servidor vuelve a interpretar el texto antes de autoguardar.
@@ -389,4 +446,9 @@ app.post('/api/voice/transcribe',limited(10),
 app.use(express.static(path.join(path.dirname(fileURLToPath(import.meta.url)),'public'),{maxAge:'15m'}));
 app.get('*',(_req,res)=>res.sendFile(path.join(path.dirname(fileURLToPath(import.meta.url)),'public','index.html')));
 app.use((err,_req,res,_next)=>res.status(err.status||500).json({error:err.type==='entity.too.large'?'Audio o solicitud demasiado grande':'Error al procesar solicitud'}));
+// Revisión discreta mientras el servidor está activo. Horario 09:00–21:00 ARG.
+function reminderCheck(){void pushService.runReminders().catch(error=>
+ console.error('Recordatorios Push',error.code||error.message));}
+const pushTimer=setInterval(reminderCheck,10*60000);pushTimer.unref();
+const firstPushCheck=setTimeout(reminderCheck,30000);firstPushCheck.unref();
 app.listen(port,'0.0.0.0',()=>console.log('GastosApp v2 escuchando en puerto '+port));

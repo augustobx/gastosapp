@@ -10,8 +10,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/app.css?v=19">
-  <script defer type="module" src="/app.js?v=19"></script>
+  <link rel="stylesheet" href="/app.css?v=20">
+  <script defer type="module" src="/app.js?v=20"></script>
   <title>GastosApp · Mis finanzas</title>
 </head>
 <body>
@@ -103,6 +103,37 @@
             <button type="button" class="btn btn-primary assistant-open">⚡ Probar registro Express</button>
           </div></div>
 
+          <section class="panel security-feature-panel" aria-label="Inicio de sesión biométrico">
+            <div class="panel-top"><div><h3>🔐 Acceso con Face ID, huella o passkey</h3>
+            <p>Entrá más rápido sin escribir tu contraseña. La verificación la realiza el dispositivo; GastosApp no recibe tu huella ni tu rostro.</p></div></div>
+            <label>Nombre de este dispositivo <input id="passkeyDeviceName" type="text" maxlength="60" placeholder="Ej.: Mi celular" autocomplete="off"></label>
+            <button id="passkeyRegisterBtn" class="btn btn-primary" type="button">+ Habilitar biometría en este dispositivo</button>
+            <h4>Dispositivos registrados</h4>
+            <div id="passkeyDevices" class="security-devices"></div>
+            <p id="passkeyStatus" role="status" class="ai-fineprint"></p>
+            <p class="ai-fineprint">Podés revocar cualquier passkey confirmando tu contraseña. La contraseña tradicional seguirá funcionando.</p>
+          </section>
+          <section class="panel security-feature-panel" aria-label="Notificaciones de GastosApp">
+            <div class="panel-top"><div><h3>🔔 Notificaciones y recordatorios</h3>
+            <p>Recibí avisos de vencimientos y cobros pendientes, incluso con GastosApp cerrada. Los avisos no muestran tus importes ni el nombre del comercio.</p></div></div>
+            <div class="notification-preferences">
+              <label class="checkbox-field"><input type="checkbox" id="pushDueSoon"><span>Próximos vencimientos y pagos</span></label>
+              <label class="checkbox-field"><input type="checkbox" id="pushOverdue"><span>Pagos atrasados</span></label>
+              <label class="checkbox-field"><input type="checkbox" id="pushIncome"><span>Ingresos fijos pendientes de cobro</span></label>
+              <label>Anticipación para vencimientos <select id="pushDaysBefore">
+                <option value="0">El mismo día</option><option value="1">1 día antes</option>
+                <option value="3">3 días antes</option><option value="7">7 días antes</option>
+              </select></label>
+            </div>
+            <div class="security-feature-buttons">
+              <button type="button" id="pushSavePrefs" class="btn btn-muted">Guardar preferencias</button>
+              <button type="button" id="pushEnableBtn" class="btn btn-primary">Activar notificaciones</button>
+              <button type="button" id="pushDisableBtn" class="btn btn-quiet hidden">Desactivar en este dispositivo</button>
+              <button type="button" id="pushTestBtn" class="btn btn-muted">Enviar notificación de prueba</button>
+            </div>
+            <p id="pushStatus" role="status" class="ai-fineprint">Las notificaciones son opcionales.</p>
+            <p class="ai-fineprint">En iPhone debés agregar GastosApp a la pantalla de inicio para habilitar notificaciones web. En otros dispositivos necesitás HTTPS y dar permiso al navegador.</p>
+          </section>
           <section id="aiUsagePanel" class="panel ai-usage-panel" aria-label="Uso y costos de inteligencia artificial">
             <div class="ai-settings-heading"><div><span class="eyebrow">CONTROL DE CONSUMO</span><h3>Uso y costos de IA</h3>
               <p>Tokens de Gemini y OpenAI, costo equivalente en USD y alertas por cuotas, créditos y límites.</p></div></div>
@@ -386,6 +417,8 @@
     <p class="form-hint">Las tarjetas calculan la primera cuota según fecha de compra, cierre y vencimiento.</p>
     <div class="dialog-actions"><button type="button" class="btn btn-muted close-dialog">Cancelar</button><button class="btn btn-primary">Guardar medio</button></div>
   </form></dialog>
-  <div id="loginScreen" class="login-screen hidden"><form id="loginForm" class="login-card"><div class="brand-mark">G<span>.</span></div><span class="eyebrow">TU ESPACIO FINANCIERO</span><h1>Bienvenido a GastosApp</h1><p>Ingresá tu contraseña para ver tus finanzas.</p><label>Contraseña<input id="loginPassword" type="password" autocomplete="current-password" required></label><button class="btn btn-primary full-width">Ingresar</button><small id="loginError" role="alert"></small></form></div>
+  <div id="loginScreen" class="login-screen hidden"><form id="loginForm" class="login-card"><div class="brand-mark">G<span>.</span></div><span class="eyebrow">TU ESPACIO FINANCIERO</span><h1>Bienvenido a GastosApp</h1><p>Ingresá tu contraseña para ver tus finanzas.</p><label>Contraseña<input id="loginPassword" type="password" autocomplete="current-password" required></label><button class="btn btn-primary full-width">Ingresar con contraseña</button>
+          <button class="btn btn-muted full-width hidden" id="passkeyLoginBtn" type="button">🔐 Entrar con Face ID / huella</button>
+          <small id="loginError" role="alert"></small></form></div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 </body></html>
