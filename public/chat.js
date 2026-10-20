@@ -23,7 +23,7 @@ export function setupChat({request,refresh,getAccounts,fmt,dateLabel,hasAI,openQ
  }
  async function audioProblem(response,operation){
    let info={};try{info=await response.json();}catch{}
-   const who=info.upstreamStatus?'OpenAI HTTP '+info.upstreamStatus:'GastosApp HTTP '+response.status;
+   const who=info.upstreamStatus?(info.provider==='gemini'?'Gemini HTTP ':'OpenAI HTTP ')+info.upstreamStatus:'GastosApp HTTP '+response.status;
    return operation+': '+who+' · '+(info.code||'error')+' · '+(info.error||'Sin detalle del servidor')+
      (info.hint?' · SOLUCIÓN: '+info.hint:'')+(info.requestId?' · ID OpenAI: '+info.requestId:'');
  }

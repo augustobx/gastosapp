@@ -113,10 +113,10 @@ export function setupAIDiagnostics(){
    setState(service,'ok',providerLabel(providerFor(service))+' HTTP '+result.httpStatus+' · '+result.detail+' Modelo: '+result.model+' · '+result.latencyMs+' ms');
    return true;
   }catch(error){
-   const upstream=error.upstreamStatus?('OpenAI HTTP '+error.upstreamStatus):('GastosApp HTTP '+(error.httpStatus||'sin respuesta'));
+   const upstream=error.upstreamStatus?((error.provider==='gemini'?'Gemini HTTP ':'OpenAI HTTP ')+error.upstreamStatus):('GastosApp HTTP '+(error.httpStatus||'sin respuesta'));
    const detail=upstream+' · '+(error.code||'error_desconocido')+' · '+(error.error||'Error sin detalle')+
      (error.hint?' · SOLUCIÓN: '+error.hint:'')+
-     (error.requestId?' · OpenAI request ID: '+error.requestId:'');
+     (error.requestId?' · Proveedor request ID: '+error.requestId:'');
    setState(service,'fail',detail);
    note('Falló '+names[service]+' ('+providerLabel(providerFor(service))+'). '+detail,'error');
    return false;
@@ -142,7 +142,7 @@ export function setupAIDiagnostics(){
    label.textContent='HTTP '+result.httpStatus+' · '+result.detail+' Tiempo: '+result.latencyMs+' ms.';
   }catch(error){
    label.dataset.kind='error';
-   label.textContent=(error.upstreamStatus?'OpenAI HTTP '+error.upstreamStatus:'GastosApp HTTP '+(error.httpStatus||'?'))+
+   label.textContent=(error.upstreamStatus?(error.provider==='gemini'?'Gemini HTTP ':'OpenAI HTTP ')+error.upstreamStatus:'GastosApp HTTP '+(error.httpStatus||'?'))+
     ' · '+(error.code||'error')+': '+(error.error||'Sin detalle')+
     (error.hint?' · SOLUCIÓN: '+error.hint:'');
   }finally{btn.disabled=false;}
@@ -161,7 +161,7 @@ export function setupAIDiagnostics(){
     headers:{'Content-Type':'application/json'},body:JSON.stringify({text:'Hola, ¿cómo andás? Soy tu asistente de GastosApp. Contame tus gastos y los organizamos juntos.',voice:$('aiVoiceSelect').value,provider:providerFor('tts')})});
    if(!r.ok){
     const error=await r.json().catch(()=>({error:'Respuesta no válida'}));
-    voiceNote((error.upstreamStatus?'OpenAI HTTP '+error.upstreamStatus:'GastosApp HTTP '+r.status)+
+    voiceNote((error.upstreamStatus?(error.provider==='gemini'?'Gemini HTTP ':'OpenAI HTTP ')+error.upstreamStatus:'GastosApp HTTP '+r.status)+
       ' · '+(error.code||'error')+': '+error.error+(error.hint?' · '+error.hint:''),'error');return;
    }
    const blob=await r.blob();playerUrl=URL.createObjectURL(blob);
