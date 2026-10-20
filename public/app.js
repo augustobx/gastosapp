@@ -1,12 +1,14 @@
-import {sortMovements} from './movement-sort.js?v=19';
-import {tableMarkup} from './movement-table.js?v=19';
-import {setupLoanEditor,previousMonthsCount} from './loan-edit.js?v=19';
-import {setupInstallments} from './installments.js?v=19';
-import {setupExpress} from './express.js?v=19';
-import {setupAIUsage} from './ai-usage.js?v=19';
-import {providerFor,saveProvider} from './providers.js?v=19';
-import { setupChat } from './chat.js?v=19';
-import { setupAIDiagnostics } from './diagnostics.js?v=19';
+import {setupPasskeyUI} from './passkeys-ui.js?v=20';
+import {setupPushUI} from './push-ui.js?v=20';
+import {sortMovements} from './movement-sort.js?v=20';
+import {tableMarkup} from './movement-table.js?v=20';
+import {setupLoanEditor,previousMonthsCount} from './loan-edit.js?v=20';
+import {setupInstallments} from './installments.js?v=20';
+import {setupExpress} from './express.js?v=20';
+import {setupAIUsage} from './ai-usage.js?v=20';
+import {providerFor,saveProvider} from './providers.js?v=20';
+import { setupChat } from './chat.js?v=20';
+import { setupAIDiagnostics } from './diagnostics.js?v=20';
 const $ = id => document.getElementById(id);
 const $$ = selector => [...document.querySelectorAll(selector)];
 const fmt = n => new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS',maximumFractionDigits:2}).format(Number(n||0));
@@ -16,7 +18,7 @@ const dateLabel = s => s ? s.slice(8,10)+'/'+s.slice(5,7)+'/'+s.slice(0,4) : '';
 const iconFor = c => ({Comida:'◈',Servicios:'⌁',Hogar:'⌂',Transporte:'➤',Salud:'✚',Educación:'▤','Deudas y préstamos':'▧',Tecnología:'▣',Entretenimiento:'✦',Indumentaria:'✧',Extra:'↗',Sueldo:'↗',Ventas:'↗'})[c]||'◉';
 const types = {dashboard:['Resumen','Tu dinero, más claro.','Una mirada simple a tus finanzas.'],movements:['Movimientos','Cada peso cuenta.','Buscá, controlá y administrá tus movimientos.'],cards:['Cuentas y tarjetas','Todos tus medios de pago.','Compras, tarjetas y vencimientos.'],reports:['Estadísticas','Conocé tus números.','Así se distribuye tu dinero.'],settings:['Configuración','A tu manera.','Ajustá la experiencia a tus necesidades.']};
 const categories = ['Comida','Servicios','Hogar','Transporte','Salud','Educación','Tecnología','Entretenimiento','Indumentaria','Deudas y préstamos','Tarjetas','Otros','Extra','Sueldo','Ventas'];
-let aiDiagnostics=null,aiUsagePanel=null,expressPanel=null,installmentsPanel=null,loanEditPanel=null;
+let aiDiagnostics=null,aiUsagePanel=null,expressPanel=null,installmentsPanel=null,loanEditPanel=null,passkeyUI=null,pushUI=null;
 const state = {month:localDay().slice(0,7),data:null,auth:false,aiEnabled:false,view:'dashboard',draft:null,editId:null,recurrenceEditId:null,accountEditId:null,recognizer:null,recorder:null,audioStream:null,audioChunks:[],deferredInstall:null,movementView:localStorage.getItem('gastosapp-movement-view')==='table'?'table':'list',sortKey:'date',sortDirection:'desc',selectedMovements:new Set()};
 function toast(message){const t=$('toast');t.textContent=message;t.classList.add('visible');clearTimeout(toast.timer);toast.timer=setTimeout(()=>t.classList.remove('visible'),4200);}
 async function request(url, method='GET',body) {
@@ -45,7 +47,7 @@ function go(view){
   $$('[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===view));
   const meta=types[view];$('breadcrumb').textContent=meta[0];$('pageTitle').textContent=meta[1];$('pageSubtitle').textContent=meta[2];
   window.scrollTo({top:0,behavior:'smooth'});
-  if(view==='settings'&&state.auth){void aiDiagnostics?.load();void aiUsagePanel?.refresh();}
+  if(view==='settings'&&state.auth){void aiDiagnostics?.load();void aiUsagePanel?.refresh();void passkeyUI?.refresh();void pushUI?.refresh();}
 }
 const account = id => state.data?.accounts.find(a=>a.id===id);
 function populateAccounts(selected){
@@ -359,6 +361,12 @@ async function toggleVoice(){
   }catch(err){toast('No se pudo acceder al micrófono: '+err.message);}
 }
 function events(){
+  passkeyUI=setupPasskeyUI({
+    request,notify:toast,
+    afterLogin:async()=>{hideLogin();$('loginPassword').value='';$('loginError').textContent='';
+      await refresh();toast('Ingresaste con passkey.');}
+  });
+  pushUI=setupPushUI({request,notify:toast});
   installmentsPanel=setupInstallments({
     request,refresh,getPlans:()=>state.data?.purchases||[],fmt,dateLabel,today:localDay
   });
@@ -457,7 +465,7 @@ function events(){
   $('salaryForm').addEventListener('submit',async e=>{e.preventDefault();try{await request('/api/settings','PATCH',{salary:Number($('salaryInput').value)});await refresh();toast('Sueldo actualizado');}catch(err){toast(err.message);}});
   $('exportBtn').addEventListener('click',async()=>{try{const data=await request('/api/export');const b=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});const u=URL.createObjectURL(b),a=document.createElement('a');a.href=u;a.download='gastosapp-'+localDay()+'.json';a.click();URL.revokeObjectURL(u);}catch(err){toast(err.message);}});
   $('logoutBtn').addEventListener('click',async()=>{await request('/api/logout','POST',{});showLogin();});
-  $('loginForm').addEventListener('submit',async e=>{e.preventDefault();try{await request('/api/login','POST',{password:$('loginPassword').value});hideLogin();$('loginPassword').value='';$('loginError').textContent='';await refresh();}catch(err){$('loginError').textContent=err.message;}});
+  $('loginForm').addEventListener('submit',async e=>{e.preventDefault();try{await request('/api/login','POST',{password:$('loginPassword').value});hideLogin();$('loginPassword').value='';$('loginError').textContent='';await refresh();void passkeyUI?.capabilities();}catch(err){$('loginError').textContent=err.message;}});
   $('themeToggle').addEventListener('click',()=>{const t=document.documentElement.dataset.theme==='light'?'dark':'light';document.documentElement.dataset.theme=t;localStorage.setItem('gastos-theme',t);$('themeToggle').textContent=t==='light'?'☀':'☾';});
   document.addEventListener('click',async e=>{
     const pay=e.target.closest('[data-paid]'),del=e.target.closest('[data-delete]'),edit=e.target.closest('[data-edit]'),
@@ -500,6 +508,7 @@ async function init(){
   $('txInstallments').innerHTML=Array.from({length:60},(_,i)=>'<option value="'+(i+1)+'">'+(i===0?'Pago único':(i+1)+' cuotas')+'</option>').join('');
   events();
   if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
+  void passkeyUI?.capabilities();
   try{
     const s=await request('/api/session');state.aiEnabled=s.aiEnabled;
     $('aiOption').classList.toggle('hidden',!s.aiEnabled);

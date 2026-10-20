@@ -13,6 +13,8 @@
     "test": "node --test"
   },
   "dependencies": {
+    "@simplewebauthn/server": "^14.0.0",
+    "web-push": "^3.6.7",
     "compression": "^1.7.5",
     "express": "^4.21.2"
   }

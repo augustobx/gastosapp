@@ -267,3 +267,29 @@ API PATCH /api/loans/:id protegido por sesión; se mantiene el endpoint de cuota
 - **Dictado y asistente:** se reconocen los ingresos fijos mensuales y se dejan de rechazar por ser recurrentes. Se rechazan cuotas o vencimientos separados para ingresos.
 
 Desplegar solo el contenedor web en Donweb, después de respaldar el volumen. Las pruebas automáticas cubren ingresos fijos con meses independientes, proyecciones, cuota recurrente anterior sin campo type, ordenamiento sin mutaciones, endpoints protegidos y actualización atómica de lotes. PWA cache v19.
+
+## Inicio de sesión biométrico / passkeys y notificaciones push (PWA v20)
+
+### Seguridad / Face ID / huella
+
+Se agregó WebAuthn/passkeys estándar con `@simplewebauthn/server`. Para habilitarlo, configurar **`APP_ORIGIN=https://URL-PUBLICA-REAL`** (sin barra final) en el archivo privado `.env` de Donweb. La variable también se pasa a `web` desde `compose.yml`. Debe coincidir exactamente con el origen HTTPS donde se abre GastosApp; para WebAuthn el RP ID será su hostname. Si no se configura, las nuevas funciones permanecen desactivadas y el inicio con contraseña sigue igual. Nunca usar una URL de ejemplo como valor real.
+
+Con la contraseña iniciada, abrir Configuración → Dispositivos biométricos → «Habilitar biometría en este dispositivo», aceptar Face ID/huella/PIN y dar un nombre. En inicios posteriores aparece «Entrar con Face ID / huella» junto a la contraseña. La contraseña sigue vigente en todo momento; puede revocarse una passkey desde Configuración confirmando la contraseña actual.
+
+WebAuthn verifica criptográficamente origen, dominio, desafío individual de 2 minutos, firma, presencia y **verificación obligatoria del usuario**; desafío de un solo uso ligado a la sesión en enrolamiento. El servidor solo guarda la **clave pública**, metadatos, contador y nombre del dispositivo; no almacena rostros, huellas ni códigos biométricos. Para funcionar desde PWA y móviles se requiere navegador/dispositivo compatible y HTTPS real. Las passkeys pertenecen a la cuenta personal única ya protegida por APP_PASSWORD. No se habilita Face ID hasta que el propietario registre una passkey.
+
+### Notificaciones Web Push
+
+Configuración → Notificaciones: botones de activar, desactivar solo en este dispositivo, enviar notificación de prueba y guardar preferencias; se solicita permiso **solo al pulsar Activar**. El backend crea automáticamente un par de claves VAPID y lo conserva en el volumen. **No hay que introducir claves VAPID a mano ni pedir credenciales de Firebase.** El permiso y la suscripción son por dispositivo; preferencias (próximos pagos, pagos atrasados, ingresos fijos por cobrar y anticipación 0/1/3/7 días) son globales para el usuario.
+
+El servicio revisa cada 10 minutos (de 09:00 a 21:00 en Argentina) si hay condiciones para notificar. Deduplica alertas por fecha, tipo y dispositivo y conserva estado de envíos en el volumen, de modo que reinicios o deploys no generen el mismo aviso diariamente de nuevo. Avisa con mensajes genéricos y **sin importes, nombres de comercios ni información privada** en las notificaciones del sistema. Los horarios de entrega dependen también del SO/proveedor push y no se garantizan al minuto. Los pagos programados consideran su fecha prevista y los préstamos sus cuotas; recordatorios anteriores abarcan los últimos 2 meses. Una notificación de prueba muestra si el proveedor push aceptó el envío (no garantiza presentación en el dispositivo).
+
+iPhone: Safari/iOS 16.4+ exige agregar la PWA a la **pantalla de inicio** para recibir Web Push y habilitar permisos desde esa instalación. En Android/desktop los navegadores compatibles requieren HTTPS y permiso del usuario. El service worker no almacena ni cachea respuestas API financieras.
+
+Persistencia: `/app/data/device-security.json` separado del JSON financiero, modo archivo 0600. Incluye credenciales públicas WebAuthn, subscriptions Web Push (tokens y secretos de cifrado de envío), preferencias, claves VAPID y deduplicación de alertas. Respaldar el volumen antes de actualizar y no compartir ese archivo públicamente. No borrar el volumen entre despliegues; si se pierde, deben volver a registrarse dispositivos y notificaciones.
+
+API: `/api/security/capabilities`, `/api/passkeys/login/{options,verify}` (público, con rate limit), `/api/passkeys/register/{options,verify}`, GET/DELETE `/api/passkeys` (autenticados), GET `/api/push/config`, PATCH `/api/push/preferences`, POST `/api/push/{subscribe,unsubscribe,test}` (autenticados). Sin cambios de claves IA, puertos, Nginx ni otras aplicaciones.
+
+Pruebas CI: restricciones de origen, desafíos de un solo uso, ausencia de inicio sin passkey registrada, autorización de endpoints, validación anti-SSRF de endpoints push, persistencia y deduplicación, recordatorios calculados sin datos sensibles. **Las pruebas automatizadas no simulan sensores biométricos reales ni garantizan entrega push externa:** confirmar una vez en móvil tras el deploy.
+
+Documentación: https://simplewebauthn.dev/docs/packages/server, https://developer.apple.com/documentation/usernotifications/sending-web-push-notifications-in-web-apps-and-browsers .
