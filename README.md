@@ -225,3 +225,21 @@ Se contabilizan llamadas realizadas por GastosApp a Gemini mediante `generateCon
 **Ejemplo:** 'Gasté 18 lucas en la farmacia con débito' se procesa localmente como gasto de ARS 18.000, Salud, medio Débito, pagado. Sin autoconfirmación, exige Guardar; con autoconfirmación activada se guarda al terminar de reconocerlo, sin voz sintética ni tokens de IA. Duraciones inferiores a 3 segundos después de hablar son un objetivo de producto y requieren medición real en celulares, redes y navegadores compatibles; no están garantizadas.
 
 Nuevo endpoint: POST /api/express/save con sesión, rate limit y verificación de la frase en el servidor; reutiliza los permisos y datos de GastosApp. Nueva función `expressAutoConfirm` se configura por PATCH /api/settings. Ninguna modificación de claves, proxy, modelos, volúmenes ni otras apps. Tests cubren interpretación local, seguridad del flag, idempotencia y rechazo de complejidad.
+
+## Préstamos y cuotas sin tarjeta (PWA v17, octubre 2026)
+
+Se diferencia explícitamente entre:
+- **Compra en tarjeta de crédito:** el formulario pregunta el importe TOTAL; el plan distribuye ese total entre las cuotas según el cierre/vencimiento de la tarjeta, como antes.
+- **Préstamo o financiación con débito, transferencia o efectivo:** el formulario pregunta el importe DE CADA CUOTA, la cantidad (hasta 60) y el primer vencimiento. No se exige tarjeta. Se crean cuotas independientes con fechas mensuales, preservando los fines de mes (por ejemplo, 30/09 -> 31/10 -> 30/11). El total del plan se calcula como importe por cuota × cantidad; no se confunde con el principal, intereses bancarios ni el monto originalmente recibido.
+- Los pagos son obligaciones futuras: registrar el préstamo no implica que ya haya pagado las 25 cuotas.
+
+En Cuentas y tarjetas → **Préstamos y compras en cuotas**, cada plan tiene **Ver cuotas y programar**. Seleccioná una o más cuotas y fecha:
+- **Programar seleccionadas:** cambia la fecha prevista de pago de todas las elegidas, sin tocar sus vencimientos originales ni marcarlas pagadas. Si la cuota anterior estaba vencida y programás junto a la cuota actual para el 31/10, el resumen de octubre contempla AMBAS cuotas exactamente una vez y el calendario muestra sus vencimientos reales.
+- **Marcar pagadas:** registra las cuotas elegidas como pagadas y su fecha efectiva; si la fecha es futura se rechaza (primero programar).
+- **Desmarcar pago:** revierte el pago elegido y conserva las fechas previstas previamente programadas.
+
+API autenticada PATCH /api/installments/batch con {ids,action:'plan'|'pay'|'unpay',date}. Mutación atómica: todas las seleccionadas se modifican o ninguna, luego persiste en el volumen GastosApp. Las compras históricas sin financingType se consideran tarjeta; no se cambian fechas ni datos guardados. GET /api/state ahora expone las cuotas con vencimiento original, fecha programada y fecha pagada y distingue cardsDue/loansDue. El API mantiene /api/paid/:id antiguo para compatibilidad.
+
+El motor de dictado y el chat ya no exigen tarjeta para un préstamo en cuotas. Si no se conoce el importe por cuota, el primer vencimiento o la interpretación es ambigua, requieren revisión: no se inventa un pago o una tarjeta. El Modo Express sigue siendo solo para gastos sencillos y deriva las cuotas al asistente avanzado. Las pruebas incluyen préstamo de 25 cuotas por débito, programación de dos cuotas de meses distintos para fin de mes, pago conjunto sin doble contabilidad, reversión, ausencia de tarjetas y compatibilidad con compras anteriores.
+
+No modificar el servidor/proxy u otros contenedores; desplegar con docker compose solo web. Hacer respaldo antes de aplicar.

@@ -10,8 +10,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/app.css?v=16">
-  <script defer type="module" src="/app.js?v=16"></script>
+  <link rel="stylesheet" href="/app.css?v=17">
+  <script defer type="module" src="/app.js?v=17"></script>
   <title>GastosApp · Mis finanzas</title>
 </head>
 <body>
@@ -75,7 +75,7 @@
           <div class="panel table-panel"><div id="allMovements" class="transaction-list full"></div></div>
         </section>
         <section class="view" id="view-cards"><div class="section-toolbar"><div><h2>Medios de pago</h2><p>Organizá tu efectivo, billeteras y tarjetas.</p></div><button id="newAccount" class="btn btn-primary">+ Agregar medio</button></div>
-          <div id="accountCards" class="account-grid"></div><div class="panel purchases-panel"><div class="panel-top"><div><h3>Compras financiadas</h3><p>La compra original y sus cuotas futuras, sin duplicar los importes.</p></div></div><div id="purchasesList"></div></div>
+          <div id="accountCards" class="account-grid"></div><div class="panel purchases-panel"><div class="panel-top"><div><h3>Préstamos y compras en cuotas</h3><p>Revisá las cuotas, programá una o varias juntas y registrá sus pagos sin duplicar importes.</p></div></div><div id="purchasesList"></div></div>
         </section>
         <section class="view" id="view-reports"><div class="section-toolbar"><div><h2>Entendé tus números</h2><p>Un panorama de cuánto ganás y cuánto gastás.</p></div></div>
           <div class="reports-grid"><article class="panel report-highlight"><small>BALANCE DEL MES</small><strong id="reportBalance">$0</strong><p id="reportInsight">Balance proyectado</p></article><article class="panel"><h3>Distribución por categoría</h3><div id="reportCategories" class="category-chart"></div></article><article class="panel"><h3>Estado de tus gastos</h3><div id="paidSplit" class="report-split"></div></article></div>
@@ -173,14 +173,24 @@
   <dialog id="movementDialog" class="app-dialog"><form id="movementForm" class="dialog-body">
     <div class="dialog-heading"><div><span class="eyebrow">REGISTRO FINANCIERO</span><h2 id="movementDialogTitle">Nuevo movimiento</h2></div><button type="button" class="close-dialog icon-btn">✕</button></div>
     <div class="segmented"><label><input type="radio" name="movementType" value="expense" checked><span>↗ Gasto</span></label><label><input type="radio" name="movementType" value="income"><span>↙ Ingreso</span></label></div>
-    <label class="large-amount">Importe en pesos <div><span>$</span><input type="number" id="txAmount" min="0.01" step="0.01" placeholder="0" required></div></label>
+    <label class="large-amount"><span id="txAmountLabel">Importe TOTAL en pesos</span> <div><span>$</span><input type="number" id="txAmount" min="0.01" step="0.01" placeholder="0" required></div></label>
     <div class="field-grid"><label>Concepto<input id="txTitle" maxlength="140" placeholder="Ej. Supermercado" required></label><label>Fecha de registro<input id="txDate" type="date" required></label></div>
     <label id="dueDateField">Vencimiento (si se paga más adelante)<input id="txDueDate" type="date"><small>Se incluirá en el mes en que vence, aunque lo registres hoy.</small></label>
     <div class="field-grid"><label>Categoría<select id="txCategory"></select></label><label>Medio de pago<select id="txAccount"></select></label></div>
     <div class="field-grid"><label id="installmentsField">Cuotas<select id="txInstallments"><option value="1">Pago único</option></select></label><label class="checkbox-field"><input id="txPaid" type="checkbox"><span id="txPaidLabel">Ya pagado</span></label></div>
+    <div id="txFinanceFields" class="hidden loan-options">
+      <label>Tipo de financiación<select id="txFinancingType">
+        <option value="loan">Préstamo / financiación (débito, transferencia, efectivo)</option>
+        <option value="card">Compra con tarjeta de crédito</option>
+      </select></label>
+      <label id="txFirstDueField" class="loan-first-due">Primer vencimiento
+        <input id="txFirstDueDate" type="date">
+        <small>Ejemplo: 30/09 para comenzar con una cuota vencida el mes pasado.</small>
+      </label>
+    </div>
     <label>Notas (opcional)<textarea id="txNotes" rows="2" maxlength="450" placeholder="Algo más sobre este movimiento..."></textarea></label>
     <label class="checkbox-field" id="recurringField"><input id="txRecurring" type="checkbox"><span>Repetir todos los meses (gasto fijo)</span></label>
-    <div class="form-hint" id="installmentHint">Las cuotas se asignan automáticamente a los próximos vencimientos de la tarjeta.</div>
+    <div class="form-hint" id="installmentHint">Elegí el tipo de financiación para programar las cuotas.</div>
     <div class="dialog-actions"><button type="button" class="btn btn-muted close-dialog">Cancelar</button><button class="btn btn-primary" type="submit">Guardar movimiento</button></div>
   </form></dialog>
 
@@ -222,6 +232,33 @@
     </div>
   </dialog>
 
+  <dialog id="installmentDialog" class="app-dialog installment-dialog" aria-label="Cuotas y pagos programados">
+    <div class="dialog-body">
+      <div class="dialog-heading"><div><span class="eyebrow">CALENDARIO DE CUOTAS</span>
+        <h2 id="installmentDialogTitle">Gestionar cuotas</h2></div>
+        <button class="icon-btn installment-close" type="button" aria-label="Cerrar">✕</button></div>
+      <p id="installmentDialogInfo" class="ai-fineprint"></p>
+      <div class="installment-actions-top">
+        <button type="button" id="installmentSelectPending" class="btn btn-muted">Seleccionar pendientes</button>
+        <button type="button" id="installmentClear" class="btn btn-quiet">Limpiar selección</button>
+      </div>
+      <div id="installmentRows" class="installment-schedule"></div>
+      <div class="installment-payment-bar">
+        <strong id="installmentSelection">Seleccioná una o más cuotas</strong>
+        <label>Fecha en que pagarás / pagaste
+          <input type="date" id="installmentPayDate">
+        </label>
+        <div class="installment-action-buttons">
+          <button type="button" id="installmentPlan" class="btn btn-muted" disabled>Programar seleccionadas</button>
+          <button type="button" id="installmentPay" class="btn btn-primary" disabled>Marcar pagadas</button>
+          <button type="button" id="installmentUnpay" class="btn btn-quiet" disabled>Desmarcar pago</button>
+        </div>
+        <p id="installmentStatus" class="ai-fineprint" role="status"></p>
+      </div>
+      <div class="dialog-actions"><button type="button" class="btn btn-muted installment-close">Cerrar</button></div>
+    </div>
+  </dialog>
+
   <dialog id="chatDialog" class="app-dialog chat-dialog">
     <div class="dialog-body chat-body">
       <div class="dialog-heading"><div><span class="eyebrow">ASISTENTE CONVERSACIONAL</span><h2>Charlemos de tus gastos ✦</h2></div>
@@ -238,7 +275,7 @@
           </div>
           <label>Concepto<input id="chatEditTitle" maxlength="140" required></label>
           <div class="field-grid"><label>Fecha de registro<input id="chatEditDate" type="date" required></label>
-          <label>Vencimiento<input id="chatEditDue" type="date"></label></div>
+          <label>Vencimiento / primera cuota<input id="chatEditDue" type="date"><small>En préstamos, indicá el primer vencimiento; el importe es el de CADA cuota.</small></label></div>
           <div class="field-grid">
             <label>Categoría<select id="chatEditCategory"></select></label>
             <label>Medio de pago<select id="chatEditAccount"></select></label>
