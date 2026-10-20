@@ -77,3 +77,31 @@ test('cuotas sobre billetera se marcan para revisión',()=>{
  const r=interpret('Compré 100 lucas en 3 cuotas con MP',[mp],new Date(2026,9,19));
  assert.equal(r.installmentCount,3);assert.ok(r.questions.length>0);
 });
+
+test('dictado Juanma: fin de mes, único, pendiente y fecha de registro distinta',()=>{
+ const r=interpret('Cargar a Juanma 890000 a fin de mes pago único',[],new Date(2026,9,19));
+ assert.equal(r.type,'expense');
+ assert.equal(r.title,'Juanma');
+ assert.equal(r.amount,890000);
+ assert.equal(r.date,'2026-10-19');
+ assert.equal(r.dueDate,'2026-10-31');
+ assert.equal(r.isPaid,false);
+ assert.equal(r.installmentCount,1);
+});
+test('fin del mes que viene calcula último día exacto',()=>{
+ const r=interpret('Anotar alquiler 900000 para fin del mes que viene',[],new Date(2026,9,19));
+ assert.equal(r.dueDate,'2026-11-30');
+ assert.equal(r.isPaid,false);
+});
+test('gasto ya pagado conserva estado y compra sin fecha de vencimiento',()=>{
+ const r=interpret('Pagué 15 lucas de nafta hoy con débito',[],new Date(2026,9,19));
+ assert.equal(r.amount,15000);assert.equal(r.isPaid,true);assert.equal(r.dueDate,null);
+});
+test('gasto con vencimiento en otro mes impacta al mes de vencimiento',()=>{
+ const s={settings:{salary:0},purchases:[],recurrences:[],transactions:[{
+   id:'t',type:'expense',title:'Juanma',amount:890000,date:'2026-10-19',dueDate:'2026-11-30',category:'Otros',isPaid:false
+ }]};
+ const oct=project(s,'2026-10'),nov=project(s,'2026-11');
+ assert.equal(oct.expenses,0);assert.equal(nov.expenses,890000);
+ assert.equal(nov.pending,890000);assert.equal(nov.upcoming[0].dueDate,'2026-11-30');
+});

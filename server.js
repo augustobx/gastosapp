@@ -97,7 +97,7 @@ async function aiInterpret(text, accounts, draft) {
   if(!process.env.OPENAI_API_KEY)return draft;
   const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),16000);
   try{
-    const prompt='Interpretá español rioplatense y lunfardo para registrar finanzas. Respondé SOLO JSON con campos type (income|expense),title,amount,date (YYYY-MM-DD),category,installmentCount,mentionedMethod,isPaid,isRecurring. "lucas"=1000 pesos, "palos"=1000000 pesos, "gambas"=100 pesos; "6 cuotas de 20 mil" es importe POR CUOTA, "120 mil en 6 cuotas" es monto TOTAL. No inventes datos. Fecha actual: '+isoDay(new Date())+'. Medios disponibles: '+accounts.map(a=>a.name).join(', ')+'.';
+    const prompt='Interpretá español rioplatense y lunfardo para registrar finanzas. Respondé SOLO JSON con campos type (income|expense),title,amount,date (YYYY-MM-DD),dueDate (YYYY-MM-DD o null),category,installmentCount,mentionedMethod,isPaid,isRecurring. date es la fecha de registro u operación, dueDate es el vencimiento o día en que se pagará. Frases como "a fin de mes", "lo pago el 25" son vencimientos futuros y NO significan pago realizado. "pago único" significa una sola cuota, no que esté pagado. "cargar a Juanma" significa gasto a nombre de Juanma. Nunca confundir fecha de registro con vencimiento. "lucas"=1000 pesos, "palos"=1000000 pesos, "gambas"=100 pesos; "6 cuotas de 20 mil" es importe POR CUOTA, "120 mil en 6 cuotas" es monto TOTAL. No inventes datos. Fecha actual: '+isoDay(new Date())+'. Medios disponibles: '+accounts.map(a=>a.name).join(', ')+'.';
     const response=await fetch('https://api.openai.com/v1/chat/completions',{
       method:'POST',signal:controller.signal,
       headers:{Authorization:'Bearer '+process.env.OPENAI_API_KEY,'Content-Type':'application/json'},
@@ -112,11 +112,14 @@ async function aiInterpret(text, accounts, draft) {
     if(typeof result.title==='string'&&result.title.trim())updated.title=result.title.trim().slice(0,140);
     if(Number.isFinite(Number(result.amount))&&Number(result.amount)>0)updated.amount=Math.round(Number(result.amount)*100)/100;
     if(/^\d{4}-\d{2}-\d{2}$/.test(result.date||''))updated.date=result.date;
+    if(result.dueDate===null || /^\d{4}-\d{2}-\d{2}$/.test(result.dueDate||''))updated.dueDate=result.dueDate;
     if(typeof result.category==='string')updated.category=result.category.slice(0,60);
     if(Number.isInteger(result.installmentCount)&&result.installmentCount>=1&&result.installmentCount<=60)
       updated.installmentCount=result.installmentCount;
     if(typeof result.isPaid==='boolean')updated.isPaid=result.isPaid;
     if(typeof result.isRecurring==='boolean')updated.isRecurring=result.isRecurring;
+    if(updated.dueDate && /\b(a fin de mes|fin de mes|fin del mes|lo pago|voy a pagar|vence|vencimiento)\b/i.test(text) &&
+       !/\b(ya pagu[eé]|ya est[aá] pagado|lo pagu[eé])\b/i.test(text))updated.isPaid=false;
     if(typeof result.mentionedMethod==='string'&&result.mentionedMethod.trim()){
       const matched=accounts.find(a=>a.name.toLowerCase().includes(result.mentionedMethod.toLowerCase())||
         result.mentionedMethod.toLowerCase().includes(a.name.toLowerCase()));

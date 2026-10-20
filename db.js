@@ -129,6 +129,7 @@ export const store = {
     if(!['expense','income'].includes(type))throw new Error('Tipo de movimiento inválido');
     const amount=finiteAmount(data.amount);
     const date=dateField(data.date);
+    const dueDate=data.dueDate ? dateField(data.dueDate) : null;
     const title=titleField(data.title);
     const accountId=validateAccount(s,data.accountId);
     const category=categoryField(data.category);
@@ -136,6 +137,7 @@ export const store = {
     const count=Number(data.installmentCount||1);
     if(!Number.isInteger(count)||count<1||count>60)throw new Error('Cuotas inválidas');
     if(type==='income' && count!==1)throw new Error('Los ingresos no admiten cuotas');
+    if(type==='income' && dueDate)throw new Error('El vencimiento corresponde a un gasto');
     const a=s.accounts.find(a=>a.id===accountId);
     if(data.isRecurring===true){
       if(type!=='expense'||count!==1)throw new Error('Los gastos recurrentes deben ser gastos mensuales sin cuotas');
@@ -149,8 +151,9 @@ export const store = {
         installments:schedule({amount,count,date,account:a}),createdAt:new Date().toISOString()};
       s.purchases.unshift(purchase);persist();return {kind:'purchase',data:purchase};
     }
-    const t={id:uid(),type,title,amount,date,category,accountId,notes,
-      isPaid:data.isPaid !== false,paidAt:data.isPaid===false?null:new Date().toISOString(),
+    const paid = typeof data.isPaid==='boolean' ? data.isPaid : (type==='income' || !dueDate || dueDate <= date);
+    const t={id:uid(),type,title,amount,date,dueDate,category,accountId,notes,
+      isPaid:paid,paidAt:paid?new Date().toISOString():null,
       createdAt:new Date().toISOString()};
     s.transactions.unshift(t);persist();return {kind:'transaction',data:t};
   },
@@ -160,6 +163,10 @@ export const store = {
     if(data.amount!==undefined)t.amount=finiteAmount(data.amount);
     if(data.title!==undefined)t.title=titleField(data.title);
     if(data.date!==undefined)t.date=dateField(data.date);
+    if(data.dueDate!==undefined){
+      if(t.type==='income' && data.dueDate)throw new Error('Los ingresos no tienen vencimiento');
+      t.dueDate=data.dueDate ? dateField(data.dueDate) : null;
+    }
     if(data.category!==undefined)t.category=categoryField(data.category);
     if(data.notes!==undefined)t.notes=clampText(data.notes);
     if(data.accountId!==undefined){

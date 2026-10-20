@@ -211,10 +211,15 @@ async function toggleVoice(){
   const NativeSpeech=window.SpeechRecognition||window.webkitSpeechRecognition;
   if(NativeSpeech){
     const rec=new NativeSpeech();state.recognizer=rec;rec.lang='es-AR';rec.interimResults=true;rec.continuous=false;
+    let heardSpeech=false;
     $('recordBtn').classList.add('recording');$('recordStatus').textContent='Escuchando... hablá ahora';
-    rec.onresult=e=>{$('assistantText').value=Array.from(e.results).map(x=>x[0].transcript).join(' ');};
+    rec.onresult=e=>{heardSpeech=true;$('assistantText').value=Array.from(e.results).map(x=>x[0].transcript).join(' ');};
     rec.onerror=e=>toast('Dictado no disponible: '+e.error);
-    rec.onend=()=>{state.recognizer=null;$('recordBtn').classList.remove('recording');$('recordStatus').textContent='Texto listo para interpretar';};
+    rec.onend=async()=>{state.recognizer=null;$('recordBtn').classList.remove('recording');
+      $('recordStatus').textContent='Analizando lo que dijiste...';
+      if(heardSpeech && $('assistantText').value.trim())await interpretText();
+      $('recordStatus').textContent='Revisá la propuesta antes de guardarla';
+    };
     try{rec.start();}catch(err){rec.onend();toast(err.message);}
     return;
   }
@@ -232,7 +237,10 @@ async function toggleVoice(){
         const r=await fetch('/api/voice/transcribe',{method:'POST',credentials:'same-origin',headers:{'Content-Type':blob.type},body:blob});
         const j=await r.json();
         if(!r.ok)throw new Error(j.error||'No se pudo transcribir');
-        $('assistantText').value=j.data.text;$('recordStatus').textContent='Audio transcripto. Revisá el texto.';
+        $('assistantText').value=j.data.text;
+        $('recordStatus').textContent='Analizando lo que dijiste...';
+        if($('assistantText').value.trim())await interpretText();
+        $('recordStatus').textContent='Revisá la propuesta antes de guardarla';
       }catch(err){toast(err.message);$('recordStatus').textContent='Probá escribirlo manualmente';}
       state.recorder=null;state.audioStream=null;
     };
