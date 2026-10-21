@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/app.css?v=20">
+  <link rel="stylesheet" href="/app.css?v=21">
   <script defer type="module" src="/app.js?v=20"></script>
   <title>GastosApp · Mis finanzas</title>
 </head>
@@ -208,9 +208,11 @@
     </div>
   </div>
   <nav class="mobile-nav" aria-label="Navegación principal">
-    <button data-view="dashboard" class="active"><span>◫</span>Inicio</button><button data-view="movements"><span>⇄</span>Movimientos</button>
+    <button data-view="dashboard" class="active"><span>◫</span>Inicio</button><button data-view="movements" aria-label="Movimientos"><span>⇄</span>Movim.</button>
     <button class="mic-nav assistant-open" aria-label="Asistente por voz"><span>✦</span></button>
-    <button data-view="cards"><span>▣</span>Tarjetas</button><button data-view="reports"><span>▥</span>Reportes</button>
+    <button data-view="cards" aria-label="Cuentas y tarjetas"><span>▣</span>Tarjetas</button><button data-view="reports" aria-label="Estadísticas y reportes"><span>▥</span>Reportes</button>
+    <button data-view="settings" aria-label="Configuración" title="Configuración"><span>⚙</span>Config.
+    </button>
   </nav>
   <dialog id="movementDialog" class="app-dialog"><form id="movementForm" class="dialog-body">
     <div class="dialog-heading"><div><span class="eyebrow">REGISTRO FINANCIERO</span><h2 id="movementDialogTitle">Nuevo movimiento</h2></div><button type="button" class="close-dialog icon-btn">✕</button></div>
