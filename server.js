@@ -100,6 +100,7 @@ app.post('/api/logout',(req,res)=>{
 // WebAuthn: inicio sin contraseña SOLO con un dispositivo registrado previamente.
 app.get('/api/security/capabilities',(_req,res)=>res.json({ok:true,data:{
  passkeysReady:passkeys.ready,passkeysRegistered:passkeys.list().length>0,
+ passkeysOrigin:passkeys.publicOrigin,passkeysRpId:passkeys.publicRpId,
  pushReady:pushService.ready
 }}));
 app.post('/api/passkeys/login/options',limited(10),async(req,res)=>{
@@ -152,6 +153,7 @@ app.post('/api/push/unsubscribe',limited(12),wrap(req=>({
 })));
 app.post('/api/push/test',limited(4),wrap(req=>
  pushService.testNotification(req.body?.endpoint)));
+app.post('/api/push/test-all',limited(3),wrap(()=>pushService.testAllNotifications()));
 
 app.get('/api/ai/tasks/:id',limited(50),wrap(req=>aiJobs.get(jobOwner(req),req.params.id)));
 app.get('/api/ai/usage',limited(45),wrap(req=>usageLedger.report(['today','month','all'].includes(req.query.period)?req.query.period:'month')));

@@ -26,11 +26,16 @@ export function setupPushUI({request,notify}){
    $('pushDaysBefore').value=String(p.daysBefore);
    $('pushEnableBtn').disabled=!config.enabled;
    $('pushTestBtn').disabled=!config.enabled;
-   if(!config.enabled){say('Pendiente: configurá APP_ORIGIN con la URL pública del sitio.');return;}
+   if(!config.enabled){$('pushTestAllBtn').disabled=true;say('Pendiente: configurá APP_ORIGIN con la URL pública del sitio.');return;}
    const {sub}=await subscription();
    $('pushEnableBtn').classList.toggle('hidden',Boolean(sub));
    $('pushDisableBtn').classList.toggle('hidden',!sub);
    $('pushTestBtn').disabled=!sub;
+   $('pushTestAllBtn').disabled=!(config.devices>0);
+   $('pushDevicesStatus').textContent='Dispositivos registrados para push: '+config.devices+
+    '. Este equipo: '+(sub?'suscripto':'sin suscripción')+
+    '. Permiso del navegador: '+Notification.permission+
+    '. Para que llegue al celular, activá notificaciones desde ese celular. La prueba local solo llega al dispositivo actual.';
    say(sub?'Notificaciones activas en este dispositivo.':'Notificaciones desactivadas en este dispositivo. Podés activarlas cuando quieras.');
   }catch(e){say('No pude comprobar las notificaciones: '+e.message,true);}
  }
@@ -73,6 +78,18 @@ export function setupPushUI({request,notify}){
   }catch(e){say(e.message,true);}
   finally{btn.disabled=false;}
  }
+ async function testAll(){
+  const btn=$('pushTestAllBtn');btn.disabled=true;
+  try{
+   const result=await request('/api/push/test-all','POST',{});
+   await refresh();
+   say('Prueba enviada a '+result.total+' dispositivo(s): '+result.accepted+
+    ' aceptadas por el proveedor, '+result.failed+' fallidas'+
+    (result.expired?' ('+result.expired+' suscripciones vencidas eliminadas)':'')+
+    '. Un envío aceptado no garantiza que el celular muestre el aviso. Si no llega, revisá permisos, modo No molestar y batería.');
+  }catch(e){say('No se pudo probar todos los dispositivos: '+e.message,true);}
+  finally{btn.disabled=false;}
+ }
  async function savePrefs(){
   const btn=$('pushSavePrefs');btn.disabled=true;
   try{
@@ -85,6 +102,7 @@ export function setupPushUI({request,notify}){
  $('pushEnableBtn').addEventListener('click',activate);
  $('pushDisableBtn').addEventListener('click',deactivate);
  $('pushTestBtn').addEventListener('click',test);
+ $('pushTestAllBtn').addEventListener('click',testAll);
  $('pushSavePrefs').addEventListener('click',savePrefs);
  return {refresh};
 }

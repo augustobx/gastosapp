@@ -297,3 +297,12 @@ Documentación: https://simplewebauthn.dev/docs/packages/server, https://develop
 ## Configuración visible desde móvil (PWA v21)
 
 Se corrigió la falta del botón Configuración en la navegación móvil: la barra inferior ahora tiene Inicio, Movim., registro por voz, Tarjetas, Reportes y **⚙ Config.**. Se conserva la navegación lateral en escritorio. Al tocar Config. se accede a biometría, notificaciones, IA y el resto de ajustes mediante el mismo `data-view=settings` ya usado en escritorio. Layout de 6 columnas con objetivos táctiles mínimo 44 px y área segura inferior. La hoja de estilos usa `?v=21` y el service worker cache `gastosapp-v21` para refrescar el cambio en la PWA instalada.
+
+## Biometría: RP ID y notificaciones multidispositivo (PWA v22)
+
+- Error "The origin of the document is not authorized for the provided RP ID": WebAuthn exige coherencia entre el origen real del documento y el RP ID del servidor. Ahora se muestran el APP_ORIGIN y RP ID configurados comparados con el origen actual del navegador. Si no coinciden, no abre un diálogo biométrico que fallará; la contraseña sigue funcionando.
+- Corregir APP_ORIGIN en el archivo privado .env de Donweb con el HTTPS y host EXACTOS donde se abre GastosApp. Aplicar con docker compose up -d --force-recreate web. No derivar automáticamente origen desde cabeceras Host externas. Si se cambia de dominio, quizá haya que registrar de nuevo las passkeys existentes.
+- Cada navegador y PWA instalada necesita una suscripción Web Push independiente. Instalar en PC no habilita push en el teléfono. Activar desde Configuración en el celular. iPhone iOS/iPadOS 16.4+ requiere agregar la PWA a Inicio.
+- Configuración muestra dispositivos suscritos y permisos del navegador. Enviar notificación de prueba comprueba solo el dispositivo actual; el nuevo botón «Probar en todos mis dispositivos» envía desde el servidor a todas las suscripciones registradas, sin depender de horarios, y devuelve números de aceptadas, fallidas y expiradas sin exponer las URL o credenciales.
+- Los recordatorios automáticos siguen ejecutándose entre las 9:00 y las 21:00 ARG si hay pagos o ingresos fijos elegibles, y no deben confundirse con las pruebas inmediatas. La aceptación del proveedor push no prueba que el sistema operativo haya mostrado la notificación.
+- Las pruebas cubren origen/RP ID anunciados, operación protegida, prueba sin suscripciones, envíos a varios endpoints, rechazo/eliminación de endpoints vencidos y respuesta sin datos financieros. PWA cache v22. No cambiar otros servicios ni datos contables.

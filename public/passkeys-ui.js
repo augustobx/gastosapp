@@ -35,15 +35,20 @@ export function setupPasskeyUI({request,afterLogin,notify}){
  const $=id=>document.getElementById(id);
  const panel=$('passkeyDevices'),status=$('passkeyStatus');
  const supported=Boolean(window.isSecureContext&&window.PublicKeyCredential&&navigator.credentials);
+ let originMatches=false;
  const tell=(message,error=false)=>{status.textContent=message;status.dataset.kind=error?'error':'neutral';};
  async function capabilities(){
   try{
    const r=await request('/api/security/capabilities');
-   $('passkeyLoginBtn').classList.toggle('hidden',!supported||!r.passkeysReady||!r.passkeysRegistered);
-   if(!r.passkeysReady)tell('Biometría pendiente: configurá APP_ORIGIN con la URL pública HTTPS en el servidor.');
+   originMatches=Boolean(r.passkeysOrigin&&r.passkeysOrigin===window.location.origin);
+   $('passkeyLoginBtn').classList.toggle('hidden',!supported||!r.passkeysReady||!r.passkeysRegistered||!originMatches);
+   if(!r.passkeysReady)tell('Biometría pendiente: configurá APP_ORIGIN con la URL pública HTTPS real en el servidor.');
+   else if(!originMatches)tell('El dominio configurado no coincide con esta PWA. En el servidor: '+r.passkeysOrigin+
+     ' (RP ID '+r.passkeysRpId+'). En este dispositivo: '+window.location.origin+
+     '. Corregí APP_ORIGIN='+window.location.origin+' en /opt/apps/gastosapp/.env y recreá el contenedor web. No se puede registrar biometría hasta corregirlo.',true);
    else if(!supported)tell('Este navegador no admite passkeys o la conexión no es HTTPS.');
-   else tell('Podés registrar Face ID, huella o PIN de tu dispositivo. Tu contraseña seguirá disponible.');
-  }catch{ $('passkeyLoginBtn').classList.add('hidden'); }
+   else tell('Dominio validado: '+window.location.origin+'. Podés registrar Face ID, huella o PIN de tu dispositivo.');
+  }catch{ originMatches=false;$('passkeyLoginBtn').classList.add('hidden'); }
  }
  async function refresh(){
   await capabilities();
@@ -66,11 +71,12 @@ export function setupPasskeyUI({request,afterLogin,notify}){
     });
     row.append(label,revoke);panel.append(row);
    }
-   $('passkeyRegisterBtn').disabled=!supported||!data.enabled;
+   $('passkeyRegisterBtn').disabled=!supported||!data.enabled||!originMatches;
   }catch(e){tell(e.message,true);}
  }
  async function register(){
   if(!supported){tell('Face ID/huella no disponibles en este navegador o sitio.',true);return;}
+  if(!originMatches){tell('APP_ORIGIN no coincide con la dirección actual. Corregí el dominio indicado arriba antes de registrar una passkey.',true);return;}
   const btn=$('passkeyRegisterBtn');btn.disabled=true;
   try{
    tell('Abrí la verificación de tu dispositivo...');
@@ -87,6 +93,7 @@ export function setupPasskeyUI({request,afterLogin,notify}){
   finally{btn.disabled=false;}
  }
  async function login(){
+  if(!originMatches){$('loginError').textContent='APP_ORIGIN no coincide con este dominio. Usá la contraseña y revisá Configuración.';return;}
   const btn=$('passkeyLoginBtn');btn.disabled=true;
   try{
    $('loginError').textContent='';

@@ -1,6 +1,6 @@
 // Solo assets estáticos. Nunca cachear datos financieros ni respuestas API.
-const CACHE='gastosapp-v21';
-const CORE=['/','/index.html','/app.css?v=21','/app.js?v=20','/chat.js?v=20','/diagnostics.js?v=20','/providers.js?v=20','/ai-tasks.js?v=20','/voice-errors.js?v=20','/speech-request.js?v=20','/ai-usage.js?v=20','/express.js?v=20','/express-parse.js?v=20','/installments.js?v=20','/loan-edit.js?v=20','/movement-sort.js?v=20','/movement-table.js?v=20','/passkeys-ui.js?v=20','/push-ui.js?v=20','/manifest.json','/icons/icon.svg'];
+const CACHE='gastosapp-v22';
+const CORE=['/','/index.html','/app.css?v=22','/app.js?v=22','/chat.js?v=20','/diagnostics.js?v=20','/providers.js?v=20','/ai-tasks.js?v=20','/voice-errors.js?v=20','/speech-request.js?v=20','/ai-usage.js?v=20','/express.js?v=20','/express-parse.js?v=20','/installments.js?v=20','/loan-edit.js?v=20','/movement-sort.js?v=20','/movement-table.js?v=20','/passkeys-ui.js?v=22','/push-ui.js?v=22','/manifest.json','/icons/icon.svg'];
 self.addEventListener('install',event=>{
   event.waitUntil(caches.open(CACHE).then(c=>c.addAll(CORE)));
   self.skipWaiting();
