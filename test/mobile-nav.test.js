@@ -20,6 +20,6 @@ test('barra móvil tiene seis columnas y botones táctiles adecuados',()=>{
  assert.match(css,/\.mobile-nav\s*\{grid-template-columns:repeat\(6,minmax\(0,1fr\)\)/);
  assert.match(css,/\.mobile-nav button\s*\{[^}]*min-height:44px/);
  const sw=fs.readFileSync(new URL('../public/sw.js',import.meta.url),'utf8');
- assert.match(sw,/gastosapp-v21/);
- assert.match(sw,/\/app\.css\?v=21/);
+ assert.match(sw,/gastosapp-v22/);
+ assert.match(sw,/\/app\.css\?v=22/);
 });
