@@ -10,8 +10,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/app.css?v=21">
-  <script defer type="module" src="/app.js?v=20"></script>
+  <link rel="stylesheet" href="/app.css?v=22">
+  <script defer type="module" src="/app.js?v=22"></script>
   <title>GastosApp · Mis finanzas</title>
 </head>
 <body>
@@ -130,8 +130,10 @@
               <button type="button" id="pushEnableBtn" class="btn btn-primary">Activar notificaciones</button>
               <button type="button" id="pushDisableBtn" class="btn btn-quiet hidden">Desactivar en este dispositivo</button>
               <button type="button" id="pushTestBtn" class="btn btn-muted">Enviar notificación de prueba</button>
+              <button type="button" id="pushTestAllBtn" class="btn btn-muted">Probar en todos mis dispositivos</button>
             </div>
             <p id="pushStatus" role="status" class="ai-fineprint">Las notificaciones son opcionales.</p>
+            <p id="pushDevicesStatus" class="ai-fineprint">Los permisos son individuales por celular y PC. Instalar la PWA en la PC no activa el celular.</p>
             <p class="ai-fineprint">En iPhone debés agregar GastosApp a la pantalla de inicio para habilitar notificaciones web. En otros dispositivos necesitás HTTPS y dar permiso al navegador.</p>
           </section>
           <section id="aiUsagePanel" class="panel ai-usage-panel" aria-label="Uso y costos de inteligencia artificial">

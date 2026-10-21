@@ -34,6 +34,8 @@ test('HTTP biometría: solo registro autorizado y firma válida; push opt-in y p
  assert.equal(caps.json.data.passkeysReady,true);
  assert.equal(caps.json.data.passkeysRegistered,false);
  assert.equal(caps.json.data.pushReady,true);
+ assert.equal(caps.json.data.passkeysOrigin,'https://gastos.ejemplo.com');
+ assert.equal(caps.json.data.passkeysRpId,'gastos.ejemplo.com');
  const premature=await req('/api/passkeys/register/options','POST',{});
  assert.equal(premature.status,401);
  assert.equal((await req('/api/passkeys/login/options','POST',{})).status,404);
@@ -52,6 +54,8 @@ test('HTTP biometría: solo registro autorizado y firma válida; push opt-in y p
   requestId:opts.json.data.requestId,response:{id:'forged',type:'public-key'}
  },true);
  assert.ok(tryAgain.status>=400,'un mismo challenge no debe valer dos veces');
+ const noDevices=await req('/api/push/test-all','POST',{},true);
+ assert.equal(noDevices.status,409);
  const pushConfig=await req('/api/push/config','GET',undefined,true);
  assert.equal(pushConfig.status,200,JSON.stringify(pushConfig));
  assert.equal(pushConfig.json.data.enabled,true);

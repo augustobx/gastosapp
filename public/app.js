@@ -1,5 +1,5 @@
-import {setupPasskeyUI} from './passkeys-ui.js?v=20';
-import {setupPushUI} from './push-ui.js?v=20';
+import {setupPasskeyUI} from './passkeys-ui.js?v=22';
+import {setupPushUI} from './push-ui.js?v=22';
 import {sortMovements} from './movement-sort.js?v=20';
 import {tableMarkup} from './movement-table.js?v=20';
 import {setupLoanEditor,previousMonthsCount} from './loan-edit.js?v=20';
