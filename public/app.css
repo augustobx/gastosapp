@@ -238,3 +238,12 @@
 @media(max-width:540px){.security-device{align-items:flex-start;flex-wrap:wrap}
 .security-feature-buttons{display:grid;grid-template-columns:1fr 1fr}
 .security-feature-buttons button{min-height:44px}}
+
+/* v21: Configuración siempre accesible desde la barra inferior móvil. */
+@media(max-width:1000px){
+  .mobile-nav{grid-template-columns:repeat(6,minmax(0,1fr))}
+  .mobile-nav button{min-width:0;min-height:44px;font-size:9px;line-height:1.2;overflow-wrap:anywhere}
+  .mobile-nav button:not(.mic-nav) span{font-size:22px}
+  .mobile-nav button[data-view=settings]{color:var(--sub)}
+  .mobile-nav button[data-view=settings].active{color:var(--accent)}
+}

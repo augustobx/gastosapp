@@ -293,3 +293,7 @@ API: `/api/security/capabilities`, `/api/passkeys/login/{options,verify}` (públ
 Pruebas CI: restricciones de origen, desafíos de un solo uso, ausencia de inicio sin passkey registrada, autorización de endpoints, validación anti-SSRF de endpoints push, persistencia y deduplicación, recordatorios calculados sin datos sensibles. **Las pruebas automatizadas no simulan sensores biométricos reales ni garantizan entrega push externa:** confirmar una vez en móvil tras el deploy.
 
 Documentación: https://simplewebauthn.dev/docs/packages/server, https://developer.apple.com/documentation/usernotifications/sending-web-push-notifications-in-web-apps-and-browsers .
+
+## Configuración visible desde móvil (PWA v21)
+
+Se corrigió la falta del botón Configuración en la navegación móvil: la barra inferior ahora tiene Inicio, Movim., registro por voz, Tarjetas, Reportes y **⚙ Config.**. Se conserva la navegación lateral en escritorio. Al tocar Config. se accede a biometría, notificaciones, IA y el resto de ajustes mediante el mismo `data-view=settings` ya usado en escritorio. Layout de 6 columnas con objetivos táctiles mínimo 44 px y área segura inferior. La hoja de estilos usa `?v=21` y el service worker cache `gastosapp-v21` para refrescar el cambio en la PWA instalada.
